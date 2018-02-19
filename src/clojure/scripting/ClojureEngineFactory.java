@@ -143,7 +143,7 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
 
     @Override
     public ScriptEngine getScriptEngine () {
-        return NS_PER_CONTEXT ? new ClojureEngineNSPC () : new ClojureEngine ();
+        return new ClojureEngine ();
     }
 
     /*
@@ -161,6 +161,7 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
     private static final String NS_TEMPLATE = System.getProperty (PACKAGE_NAME + ".NS_TEMPLATE", PACKAGE_NAME + ".ns-%d");
     private static final Namespace NS_FORCED = NS_TEMPLATE.equals (String.format (NS_TEMPLATE, 1)) ? createNamespace (NS_TEMPLATE) : null;
     private static final boolean NS_PER_CONTEXT = NS_FORCED == null && Boolean.getBoolean (PACKAGE_NAME + ".NS_PER_CONTEXT");
+    private static final String NSPC_KEY = "javax.script.Namespace";
 
     // private static final Var REFER = RT.var ("clojure.core", "refer");
     // private static final Var WARN_ON_REFLECTION = RT.var ("clojure.core", "*warn-on-reflection*");
@@ -202,21 +203,6 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
         return a;
     }
 
-    private static Object callClojureZ (final Callable cc, final Namespace ns, final Bindings b, final ScriptContext c) throws ScriptException {
-        return callClojure (cc, addBindings (RT.map (RT.CURRENT_NS, ns,
-                                                     RT.UNCHECKED_MATH, RT.UNCHECKED_MATH.deref (),
-                                                     WARN_ON_REFLECTION, WARN_ON_REFLECTION.deref (),
-                                                     // RT.IN, new LineNumberingPushbackReader (c.getReader ()),
-                                                     RT.IN, c.getReader (),
-                                                     RT.OUT, c.getWriter (),
-                                                     RT.ERR, c.getErrorWriter ()),
-                                             b, c.getBindings (GLOBAL_SCOPE)));
-    }
-
-    private static Object callClojureZ (final Callable cc, final Namespace ns, final ScriptContext c) throws ScriptException {
-        return callClojureZ (cc, ns, c.getBindings (ENGINE_SCOPE), c);
-    }
-
     private static Callable asCompilerLoad (final Reader r) {
         if (r == null)
             throw new NullPointerException ("reader is null");
@@ -248,46 +234,10 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
     }
 
     /*
-      Invocable support
-    */
-
-    private static IFn getClojureFN (final String name, final Namespace ns) throws NoSuchMethodException {
-        if (name == null)
-            throw new NullPointerException ("name is null");
-
-        try {
-            Symbol sym = Symbol.intern (name); // Maybe namespaced
-            Var var = sym.getNamespace () != null ? Var.find (sym) : (Var) ns.getMapping (sym);
-            IFn fn = (IFn) var.deref ();
-            if (fn == null)
-                throw new NullPointerException ("IFn is null");
-            return fn;
-        } catch (Exception e) {
-            throw (NoSuchMethodException) new NoSuchMethodException (name).initCause (e);
-        }
-    }
-
-    private static Object callClojureF0 (final IFn fn, final Namespace ns, final ScriptContext c, final Object... args) throws ScriptException {
-        return callClojureZ (new Callable () {
-                @Override
-                public Object call () {
-                    return args != null && args.length > 0 ? fn.applyTo (RT.seq (args)) : fn.invoke ();
-                }}, ns, c);
-    }
-
-    private static Object callClojureF1 (final IFn fn, final Namespace ns, final ScriptContext c, final Object thiz, final Object... args) throws ScriptException {
-        return callClojureZ (new Callable () {
-                @Override
-                public Object call () {
-                    return fn.applyTo (RT.cons (thiz, args));
-                }}, ns, c);
-    }
-
-    /*
       ScriptEngine
     */
 
-    private class ClojureEngine implements ScriptEngine, Compilable, Invocable {
+    private final class ClojureEngine implements ScriptEngine, Compilable, Invocable {
 
         /*
           ScriptEngine
@@ -372,6 +322,14 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
             if (c == null)
                 throw new NullPointerException("context is null");
 
+            if (NS_PER_CONTEXT)
+                synchronized (c) {
+                    Namespace ns = (Namespace) c.getAttribute (NSPC_KEY, ENGINE_SCOPE);
+                    if (ns == null)
+                        c.setAttribute (NSPC_KEY, (namespace = createNamespace ()), ENGINE_SCOPE);
+                    else
+                        namespace = ns;
+                }
             context = c;
         }
 
@@ -381,7 +339,7 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
 
         @Override
         public CompiledScript compile (final Reader r) throws ScriptException {
-            return new ClojureCompiledScript (r, ClojureEngine.this.namespace, ClojureEngine.this.context);
+            return new ClojureCompiledScript (r, ClojureEngine.this.context);
         }
 
         @Override
@@ -394,12 +352,13 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
         */
 
         // TODO: CompiledScript may have to be reevaluated when NS_PER_CONTEXT
-        final class ClojureCompiledScript extends CompiledScript implements Callable {
+        private final class ClojureCompiledScript extends CompiledScript implements Callable {
 
             private Object parsed;
             private IFn compiled;
 
-            ClojureCompiledScript (final Reader r, final Namespace ns, final ScriptContext c) throws ScriptException {
+            ClojureCompiledScript (final Reader r, final ScriptContext c) throws ScriptException {
+                Namespace ns = NS_PER_CONTEXT ? (Namespace) c.getAttribute (NSPC_KEY, ENGINE_SCOPE) : ClojureEngine.this.namespace;
                 final Reader ccr = ClojureConcatReader.wrap ("(fn [] ", r, ")");
 
                 callClojure (new Callable () {
@@ -467,7 +426,7 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
         public <T> T getInterface (final Class<T> clasz) {
             // Currently implemented just for completeness of Invocable.
             // Looks for functions with name "simpleClassName#method" for each interface's methods.
-            return getClojureI (namespace, null, clasz);
+            return getClojureI (null, clasz);
         }
 
         @Override
@@ -478,12 +437,12 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
             if (thiz == null /*|| TODO: Object does not represent a scripting object */)
                 throw new IllegalArgumentException ("Object is null or does not represent a scripting object");
 
-            return getClojureI (namespace, thiz, clasz);
+            return getClojureI (thiz, clasz);
         }
 
         @Override
         public Object invokeFunction (final String name, final Object... args) throws ScriptException, NoSuchMethodException {
-            return callClojureF0 (getClojureFN (name, namespace), namespace, context, args);
+            return callClojureF0 (getClojureFN (name), context, args);
         }
 
         @Override
@@ -491,29 +450,79 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
             if (thiz == null /*|| TODO: specified Object does not represent a scripting object */)
                 throw new IllegalArgumentException ("Object is null or does not represent a scripting object");
 
-            return callClojureF1 (getClojureFN (name, namespace), namespace, context, thiz, args);
+            return callClojureF1 (getClojureFN (name), context, thiz, args);
         }
 
         /*
           Non-interface methods
         */
 
-        protected ScriptContext context = new SimpleScriptContext();
-        protected Namespace namespace = NS_FORCED != null ? NS_FORCED : createNamespace ();
+        private ScriptContext context = new SimpleScriptContext();
+        private Namespace namespace = NS_FORCED != null ? NS_FORCED : createNamespace ();
 
-        protected Object invokeFunction (final IFn fn, final Object... args) throws ScriptException {
-            return callClojureF0 (fn, namespace, context, args);
+        {
+            if (NS_PER_CONTEXT)
+                context.setAttribute (NSPC_KEY, namespace, ENGINE_SCOPE);
         }
 
-        protected Object invokeMethod (final IFn fn, final Object thiz, final Object... args) throws ScriptException {
-            return callClojureF1 (fn, namespace, context, thiz, args);
+
+        private Object callClojureZ (final Callable cc, final Bindings b, final ScriptContext c) throws ScriptException {
+            return callClojure (cc, addBindings (RT.map (RT.CURRENT_NS, NS_PER_CONTEXT ? (Namespace) c.getAttribute (NSPC_KEY, ENGINE_SCOPE) : namespace,
+                                                         RT.UNCHECKED_MATH, RT.UNCHECKED_MATH.deref (),
+                                                         WARN_ON_REFLECTION, WARN_ON_REFLECTION.deref (),
+                                                         // RT.IN, new LineNumberingPushbackReader (c.getReader ()),
+                                                         RT.IN, c.getReader (),
+                                                         RT.OUT, c.getWriter (),
+                                                         RT.ERR, c.getErrorWriter ()),
+                                                 b, c.getBindings (GLOBAL_SCOPE)));
+        }
+
+        private Object callClojureZ (final Callable cc, final ScriptContext c) throws ScriptException {
+            return callClojureZ (cc, c.getBindings (ENGINE_SCOPE), c);
+        }
+
+        private IFn getClojureFN (final String name, final Namespace ns) throws NoSuchMethodException {
+            if (name == null)
+                throw new NullPointerException ("name is null");
+
+            try {
+                Symbol sym = Symbol.intern (name); // Maybe namespaced
+                Var var = sym.getNamespace () != null ? Var.find (sym) : (Var) ns.getMapping (sym);
+                IFn fn = (IFn) var.deref ();
+                if (fn == null)
+                    throw new NullPointerException ("IFn is null");
+                return fn;
+            } catch (Exception e) {
+                throw (NoSuchMethodException) new NoSuchMethodException (name).initCause (e);
+            }
+        }
+
+        private IFn getClojureFN (final String name) throws NoSuchMethodException {
+            return getClojureFN (name, NS_PER_CONTEXT ? (Namespace) context.getAttribute (NSPC_KEY, ENGINE_SCOPE) : namespace);
+        }
+
+        private Object callClojureF0 (final IFn fn, final ScriptContext c, final Object... args) throws ScriptException {
+            return callClojureZ (new Callable () {
+                    @Override
+                    public Object call () {
+                        return args != null && args.length > 0 ? fn.applyTo (RT.seq (args)) : fn.invoke ();
+                    }}, c);
+        }
+
+        private Object callClojureF1 (final IFn fn, final ScriptContext c, final Object thiz, final Object... args) throws ScriptException {
+            return callClojureZ (new Callable () {
+                    @Override
+                    public Object call () {
+                        return fn.applyTo (RT.cons (thiz, args));
+                    }}, c);
         }
 
         @SuppressWarnings ("unchecked")
-        protected <T> T getClojureI (final Namespace ns, final Object thiz, final Class<T> clasz) {
+        private <T> T getClojureI (final Object thiz, final Class<T> clasz) {
             if (clasz == null || ! clasz.isInterface ())
                 throw new IllegalArgumentException ("Class object is null or is not an interface");
 
+            Namespace ns = NS_PER_CONTEXT ? (Namespace) context.getAttribute (NSPC_KEY, ENGINE_SCOPE) : namespace;
             String csn = clasz.getSimpleName ();
             final Map<String, IFn> fns = new HashMap<String, IFn> ();
             try {
@@ -529,7 +538,7 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
                                                        String name = method.getName ();
                                                        IFn fn = fns.get (name);
                                                        if (fn != null)
-                                                           return thiz == null ? invokeFunction (fn, args) : invokeMethod (fn, thiz, args);
+                                                           return thiz == null ? callClojureF0 (fn, context, args) : callClojureF1 (fn, context, thiz, args);
                                                        if ("toString".equals (name))
                                                            return "Proxy implementation of ClojureEngine/" + clasz.toString ();
                                                        if ("hashCode".equals (name))
@@ -540,146 +549,27 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
                                                    }});
         }
 
-        protected Object callClojureA (final Callable cc) throws ScriptException {
-            return callClojureZ (cc, namespace, context);
+        private Object callClojureA (final Callable cc) throws ScriptException {
+            return callClojureZ (cc, context);
         }
 
-        protected Object callClojureB (final Callable cc, final Bindings b) throws ScriptException {
+        private Object callClojureB (final Callable cc, final Bindings b) throws ScriptException {
             if (b == null)
                 throw new NullPointerException ("bindings is null");
 
-            return callClojureZ (cc, namespace, b, context);
+            return callClojureZ (cc, b, context);
         }
 
-        protected Object callClojureC (final Callable cc, final ScriptContext c) throws ScriptException {
+        private Object callClojureC (final Callable cc, final ScriptContext c) throws ScriptException {
             if (c == null)
                 throw new NullPointerException ("context is null");
 
-            return callClojureZ (cc, namespace, c);
-        }
-    }
-
-    private class ClojureEngineNSPC extends ClojureEngine {
-
-        private final Map<ScriptContext,Namespace> nsmap = new WeakHashMap<ScriptContext,Namespace> ();
-
-        {
-            nsmap.put (context, namespace);
-        }
-
-        private Namespace getNamespaceOrCreateIfAbsent (final ScriptContext c) {
-            synchronized (nsmap) {
-                if (nsmap.containsKey (c))
-                    return nsmap.get (c);
-                else {
-                    Namespace ns = createNamespace ();
-                    nsmap.put (c, ns);
-                    return ns;
+            if (NS_PER_CONTEXT)
+                synchronized (c) {
+                    if (c.getAttribute (NSPC_KEY, ENGINE_SCOPE) == null)
+                        c.setAttribute (NSPC_KEY, createNamespace (), ENGINE_SCOPE);
                 }
-            }
-        }
-
-        @Override
-        public void setContext (final ScriptContext c) {
-            if (c == null)
-                throw new NullPointerException("context is null");
-
-            synchronized (context) {
-                context = c;
-                namespace = getNamespaceOrCreateIfAbsent (c);
-            }
-        }
-
-        @Override
-        public CompiledScript compile (final Reader r) throws ScriptException {
-            ScriptContext c;
-            Namespace ns;
-            synchronized (context) {
-                c = context;
-                ns = namespace;
-            }
-            return new ClojureCompiledScript (r, ns, c);
-        }
-
-        @Override
-        public Object invokeFunction (final String name, final Object... args) throws ScriptException, NoSuchMethodException {
-            ScriptContext c;
-            Namespace ns;
-            synchronized (context) {
-                c = context;
-                ns = namespace;
-            }
-            return callClojureF0 (getClojureFN (name, ns), ns, c, args);
-        }
-
-        @Override
-        public Object invokeMethod (final Object thiz, final String name, final Object... args) throws ScriptException, NoSuchMethodException {
-            if (thiz == null /*|| TODO: specified Object does not represent a scripting object */)
-                throw new IllegalArgumentException ("Object is null or does not represent a scripting object");
-
-            ScriptContext c;
-            Namespace ns;
-            synchronized (context) {
-                c = context;
-                ns = namespace;
-            }
-            return callClojureF1 (getClojureFN (name, ns), ns, c, thiz, args);
-        }
-
-        @Override
-        protected Object invokeFunction (final IFn fn, final Object... args) throws ScriptException {
-            ScriptContext c;
-            Namespace ns;
-            synchronized (context) {
-                c = context;
-                ns = namespace;
-            }
-            return callClojureF0 (fn, ns, c, args);
-        }
-
-        @Override
-        protected Object invokeMethod (final IFn fn, final Object thiz, final Object... args) throws ScriptException {
-            ScriptContext c;
-            Namespace ns;
-            synchronized (context) {
-                c = context;
-                ns = namespace;
-            }
-            return callClojureF1 (fn, ns, c, thiz, args);
-        }
-
-        @Override
-        protected Object callClojureA (final Callable cc) throws ScriptException {
-            ScriptContext c;
-            Namespace ns;
-            synchronized (context) {
-                c = context;
-                ns = namespace;
-            }
-            return callClojureZ (cc, ns, c);
-        }
-
-        @Override
-        protected Object callClojureB (final Callable cc, final Bindings b) throws ScriptException {
-            if (b == null)
-                throw new NullPointerException ("bindings is null");
-
-            ScriptContext c;
-            Namespace ns;
-            synchronized (context) {
-                c = context;
-                ns = namespace;
-            }
-
-            return callClojureZ (cc, ns, b, c);
-        }
-
-        @Override
-        protected Object callClojureC (final Callable cc, final ScriptContext c) throws ScriptException {
-            if (c == null)
-                throw new NullPointerException ("context is null");
-
-            return callClojureZ (cc, getNamespaceOrCreateIfAbsent (c), c);
+            return callClojureZ (cc, c);
         }
     }
 
