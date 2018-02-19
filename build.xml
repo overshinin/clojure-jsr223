@@ -1,0 +1,148 @@
+<project name="clojure-jsr223" default="jar" xmlns:cs="antlib:com.puppycrawl.tools.checkstyle.ant">
+  <property environment="env"/>
+
+  <property name="src" location="src"/>
+  <property name="lib" location="lib"/>
+  <property name="resource" location="resource"/>
+  <property name="build" location="build"/>
+  <property name="dist" location="dist"/>
+  <property name="clojure_jar" location="${lib}/clojure-1.9.0.jar"/>
+  <property name="clojure151_jar" location="${lib}/clojure-1.5.1.jar"/>
+  <property name="jsr223-ri-api_jar" location="${lib}/script-api.jar"/>
+
+  <property name="clojure_jsr223_jar" location="${dist}/clojure-jsr223.jar"/>
+
+  <path id="clojure.class.path">
+    <pathelement location="${lib}/clojure-1.9.0.jar"/>
+    <pathelement location="${lib}/spec.alpha-0.1.143.jar"/>
+    <pathelement location="${lib}/core.specs.alpha-0.1.24.jar"/>
+  </path>
+
+  <target name="init">
+    <mkdir dir="${build}"/>
+    <mkdir dir="${dist}"/>
+  </target>
+
+  <target name="checkstyle">
+    <cs:checkstyle config="${resource}/sun_custom_checks.xml">
+      <fileset dir="${src}" includes="**/*.java"/>
+    </cs:checkstyle>
+  </target>
+
+  <target name="compile5" depends="init">
+    <javac srcdir="${src}" destdir="${build}" debug="on" includeantruntime="false"
+           source="1.5" target="1.5" bootclasspath="${env.JAVA_HOME_5}/jre/lib/rt.jar">
+      <compilerarg value="-Xlint:unchecked"/>
+      <classpath>
+        <pathelement path="${clojure151_jar}"/>
+        <pathelement path="${jsr223-ri-api_jar}"/>
+      </classpath>
+    </javac>
+  </target>
+
+  <target name="compile6" depends="init">
+    <javac srcdir="${src}" destdir="${build}" debug="on" includeantruntime="false"
+           source="1.6" target="1.6" bootclasspath="${env.JAVA_HOME_6}/jre/lib/rt.jar">
+      <compilerarg value="-Xlint:unchecked"/>
+      <classpath>
+        <pathelement path="${clojure_jar}"/>
+      </classpath>
+    </javac>
+  </target>
+
+  <target name="compile7" depends="init">
+    <javac srcdir="${src}" destdir="${build}" debug="on" includeantruntime="false"
+           source="1.7" target="1.7" bootclasspath="${env.JAVA_HOME_7}/jre/lib/rt.jar">
+      <compilerarg value="-Xlint:unchecked"/>
+      <classpath>
+        <pathelement path="${clojure_jar}"/>
+      </classpath>
+    </javac>
+  </target>
+
+  <target name="compile-latest" depends="init">
+    <javac srcdir="${src}" destdir="${build}" debug="on" includeantruntime="false">
+      <compilerarg value="-Xlint:unchecked"/>
+      <classpath>
+        <pathelement path="${clojure_jar}"/>
+      </classpath>
+    </javac>
+  </target>
+
+  <target name="jar" depends="compile6">
+    <jar jarfile="${clojure_jsr223_jar}">
+      <service type="javax.script.ScriptEngineFactory" provider="clojure.scripting.ClojureEngineFactory"/>
+      <fileset dir="${build}"/>
+    </jar>
+  </target>
+
+  <target name="runtest5" depends="jar">
+    <java classname="clojure.main" fork="true" jvm="${env.JAVA_HOME_5}/bin/java">
+      <jvmarg value="-showversion"/>
+      <jvmarg value="-Dtest.verbose=${test.verbose}"/>
+      <arg value="${resource}/test.clj"/>
+      <classpath>
+        <pathelement path="${clojure151_jar}"/>
+        <pathelement path="${jsr223-ri-api_jar}"/>
+        <pathelement path="${clojure_jsr223_jar}"/>
+      </classpath>
+    </java>
+  </target>
+
+  <target name="runtest" depends="jar">
+    <java classname="clojure.main" fork="true">
+      <jvmarg value="-showversion"/>
+      <jvmarg value="-Dtest.verbose=${test.verbose}"/>
+      <arg value="${resource}/test.clj"/>
+      <classpath refid="clojure.class.path"/>
+      <classpath>
+        <pathelement path="${clojure_jsr223_jar}"/>
+      </classpath>
+    </java>
+  </target>
+
+  <target name="runtestu" depends="jar">
+    <java classname="clojure.main" fork="true">
+      <jvmarg value="-showversion"/>
+      <jvmarg value="-Dtest.verbose=${test.verbose}"/>
+      <jvmarg value="-Dclojure.scripting.NS_TEMPLATE=user"/>
+      <arg value="${resource}/test.clj"/>
+      <classpath refid="clojure.class.path"/>
+      <classpath>
+        <pathelement path="${clojure_jsr223_jar}"/>
+      </classpath>
+    </java>
+  </target>
+
+  <target name="runtestn" depends="jar">
+    <java classname="clojure.main" fork="true">
+      <jvmarg value="-showversion"/>
+      <jvmarg value="-Dtest.verbose=${test.verbose}"/>
+      <jvmarg value="-Dclojure.scripting.NS_TEMPLATE=c.s.n%d"/>
+      <arg value="${resource}/test.clj"/>
+      <classpath refid="clojure.class.path"/>
+      <classpath>
+        <pathelement path="${clojure_jsr223_jar}"/>
+      </classpath>
+    </java>
+  </target>
+
+  <target name="runtestc" depends="jar">
+    <java classname="clojure.main" fork="true">
+      <jvmarg value="-showversion"/>
+      <jvmarg value="-Dtest.verbose=${test.verbose}"/>
+      <jvmarg value="-Dclojure.scripting.NS_PER_CONTEXT=true"/>
+      <arg value="${resource}/test.clj"/>
+      <classpath refid="clojure.class.path"/>
+      <classpath>
+        <pathelement path="${clojure_jsr223_jar}"/>
+      </classpath>
+    </java>
+  </target>
+
+  <target name="clean">
+    <delete dir="${build}"/>
+    <delete dir="${dist}"/>
+  </target>
+
+</project>

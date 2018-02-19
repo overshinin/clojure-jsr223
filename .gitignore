@@ -1,0 +1,8 @@
+*~
+*.class
+*.log
+*.zip
+*.pdf
+build/
+dist/
+lib/*.jar*
