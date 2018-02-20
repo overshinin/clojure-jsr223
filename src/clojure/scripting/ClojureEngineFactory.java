@@ -249,7 +249,7 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
 
         @Override
         public Bindings createBindings () {
-            return new SimpleBindings (new ConcurrentHashMap<String,Object> ());
+            return new SimpleBindings (new ConcurrentHashMap<String, Object> ());
         }
 
         @Override
@@ -346,7 +346,7 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
 
         @Override
         public CompiledScript compile (final Reader r) throws ScriptException {
-            return new ClojureCompiledScript (r, ClojureEngine.this.context);
+            return new ClojureCompiledScript (ClojureConcatReader.wrap ("(fn [] ", r, ")"));
         }
 
         @Override
@@ -358,23 +358,27 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
           CompiledScript
         */
 
-        // TODO: CompiledScript may need to be reevaluated when NS_PER_CONTEXT (namespace changed)
         private final class ClojureCompiledScript extends CompiledScript implements Callable {
 
             private Object parsed;
             private IFn compiled;
+            private Map<Namespace, IFn> compiledByNS;
 
-            ClojureCompiledScript (final Reader r, final ScriptContext c) throws ScriptException {
+            ClojureCompiledScript (final Reader r) throws ScriptException {
+                ScriptContext c = ClojureEngine.this.context;
                 Namespace ns = NS_PER_CONTEXT ? getContextNS (c) : ClojureEngine.this.namespace;
-                final Reader ccr = ClojureConcatReader.wrap ("(fn [] ", r, ")");
 
                 callClojure (new Callable () {
                         @Override
                         public Object call () {
-                            // parsed = LispReader.read (new LineNumberingPushbackReader (ccr), null); // from Clojure 1.7.0
-                            parsed = LispReader.read (new LineNumberingPushbackReader (ccr), true, null, false); // Clojure 1.5.1
+                            // parsed = LispReader.read (new LineNumberingPushbackReader (r), null); // from Clojure 1.7.0
+                            parsed = LispReader.read (new LineNumberingPushbackReader (r), true, null, false); // Clojure 1.5.1
+                            if (NS_PER_CONTEXT)
+                                compiledByNS = new ConcurrentHashMap<Namespace, IFn> ();
                             try { // optionally; may fail due to missing vars/bindings, but try to use Engine/Global bindings
                                 compiled = (IFn) Compiler.eval (parsed);
+                                if (NS_PER_CONTEXT)
+                                    compiledByNS.put ((Namespace) RT.CURRENT_NS.deref (), compiled);
                             } catch (Exception e) {}
                             return null;
                         }}, addBindings (RT.map (Compiler.LOADER, RT.makeClassLoader (),
@@ -419,6 +423,15 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
 
             @Override
             public Object call () { // implements Callable
+                if (NS_PER_CONTEXT) {
+                    Namespace ns = (Namespace) RT.CURRENT_NS.deref ();
+                    IFn _compiled = compiledByNS.get (ns);
+                    if (_compiled == null) {
+                        _compiled = (IFn) Compiler.eval (parsed);
+                        compiledByNS.put (ns, _compiled);
+                    }
+                    return _compiled.invoke ();
+                }
                 if (compiled == null)
                     compiled = (IFn) Compiler.eval (parsed);
                 return compiled.invoke ();
@@ -518,7 +531,17 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
             return callClojureZ (new Callable () {
                     @Override
                     public Object call () {
-                        return args != null && args.length > 0 ? fn.applyTo (RT.seq (args)) : fn.invoke ();
+                        switch (args == null ? 0 : args.length) {
+                        case 0: return fn.invoke ();
+                        case 1: return fn.invoke (args[0]);
+                        case 2: return fn.invoke (args[0], args[1]);
+                        case 3: return fn.invoke (args[0], args[1], args[2]);
+                        case 4: return fn.invoke (args[0], args[1], args[2], args[3]);
+                        case 5: return fn.invoke (args[0], args[1], args[2], args[3], args[4]);
+                        case 6: return fn.invoke (args[0], args[1], args[2], args[3], args[4], args[5]);
+                        case 7: return fn.invoke (args[0], args[1], args[2], args[3], args[4], args[5], args[6]);
+                        default: return fn.applyTo (RT.seq (args));
+                        }
                     }}, context);
         }
 
