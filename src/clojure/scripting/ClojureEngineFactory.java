@@ -159,7 +159,7 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
       In the NS_PER_CONTEXT mode, Namespace is stored in ScriptContext(ENGINE_SCOPE) Bindings under "javax.script.Namespace" key
       For the ScriptEngine methods, which do not accept ScriptContext, default (ScriptEngine) ScriptContext (and its namespace) is used.
 
-      TODO: Namespace can be created per Bindings ?
+      TODO: Namespace can be created per Bindings (NS_PER_BINDINGS)?
     */
     private static final String PACKAGE_NAME = ClojureEngineFactory.class.getPackage ().getName ();
     private static final String NS_TEMPLATE = System.getProperty (PACKAGE_NAME + ".NS_TEMPLATE", PACKAGE_NAME + ".ns-%d");
@@ -195,7 +195,7 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
             if (b != null)
                 for (Map.Entry<String, Object> entry : b.entrySet ()) {
                     String k = entry.getKey ();
-                    if (! k.startsWith ("javax.script.") && ! a.containsKey (k)) { // existing keys are not overwritten
+                    if (! k.startsWith ("javax.script.") && ! a.containsKey (k)) {
                         // Create dynamic typed VARs from scripting bindings
                         Var var = ns.intern (Symbol.intern (null, k)).setDynamic ();
                         Object v = entry.getValue ();
@@ -318,8 +318,7 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
             if (scope != GLOBAL_SCOPE && scope != ENGINE_SCOPE)
                 throw new IllegalArgumentException("Invalid scope value.");
 
-            // TODO: Introduce NS_PER_BINDINGS
-            if (scope == ENGINE_SCOPE && NS_PER_CONTEXT)
+            if (NS_PER_CONTEXT && scope == ENGINE_SCOPE)
                 b.put (NS_KEY, getContextNS (context));
 
             context.setBindings (b, scope);
@@ -331,7 +330,7 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
                 throw new NullPointerException("context is null");
 
             if (NS_PER_CONTEXT) {
-                Namespace ns = getContextNS (c);
+                Namespace ns = (Namespace) c.getAttribute (NS_KEY, ENGINE_SCOPE);
                 if (ns == null) {
                     ns = createNamespace ();
                     c.setAttribute (NS_KEY, ns, ENGINE_SCOPE);
@@ -359,7 +358,7 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
           CompiledScript
         */
 
-        // TODO: CompiledScript may have to be reevaluated when NS_PER_CONTEXT
+        // TODO: CompiledScript may need to be reevaluated when NS_PER_CONTEXT (namespace changed)
         private final class ClojureCompiledScript extends CompiledScript implements Callable {
 
             private Object parsed;
@@ -434,7 +433,7 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
         public <T> T getInterface (final Class<T> clasz) {
             // Currently implemented just for completeness of Invocable.
             // Looks for functions with name "simpleClassName#method" for each interface's methods.
-            return getClojureI (null, clasz);
+            return getClojureIF (null, clasz);
         }
 
         @Override
@@ -445,12 +444,12 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
             if (thiz == null /*|| TODO: Object does not represent a scripting object */)
                 throw new IllegalArgumentException ("Object is null or does not represent a scripting object");
 
-            return getClojureI (thiz, clasz);
+            return getClojureIF (thiz, clasz);
         }
 
         @Override
         public Object invokeFunction (final String name, final Object... args) throws ScriptException, NoSuchMethodException {
-            return callClojureF0 (getClojureFN (name), context, args);
+            return callClojureF0 (getClojureFN (name), args);
         }
 
         @Override
@@ -458,7 +457,7 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
             if (thiz == null /*|| TODO: specified Object does not represent a scripting object */)
                 throw new IllegalArgumentException ("Object is null or does not represent a scripting object");
 
-            return callClojureF1 (getClojureFN (name), context, thiz, args);
+            return callClojureF1 (getClojureFN (name), thiz, args);
         }
 
         /*
@@ -476,7 +475,8 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
         }
 
         private Namespace getContextNS (final ScriptContext c) {
-            return (Namespace) c.getAttribute (NS_KEY, ENGINE_SCOPE);
+            Namespace ns = (Namespace) c.getAttribute (NS_KEY, ENGINE_SCOPE);
+            return ns != null ? ns : namespace;
         }
 
         private Object callClojureZ (final Callable cc, final Bindings b, final ScriptContext c) throws ScriptException {
@@ -514,24 +514,24 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
             return getClojureFN (name, NS_PER_CONTEXT ? getContextNS (context) : namespace);
         }
 
-        private Object callClojureF0 (final IFn fn, final ScriptContext c, final Object... args) throws ScriptException {
+        private Object callClojureF0 (final IFn fn, final Object... args) throws ScriptException {
             return callClojureZ (new Callable () {
                     @Override
                     public Object call () {
                         return args != null && args.length > 0 ? fn.applyTo (RT.seq (args)) : fn.invoke ();
-                    }}, c);
+                    }}, context);
         }
 
-        private Object callClojureF1 (final IFn fn, final ScriptContext c, final Object thiz, final Object... args) throws ScriptException {
+        private Object callClojureF1 (final IFn fn, final Object thiz, final Object... args) throws ScriptException {
             return callClojureZ (new Callable () {
                     @Override
                     public Object call () {
                         return fn.applyTo (RT.cons (thiz, args));
-                    }}, c);
+                    }}, context);
         }
 
         @SuppressWarnings ("unchecked")
-        private <T> T getClojureI (final Object thiz, final Class<T> clasz) {
+        private <T> T getClojureIF (final Object thiz, final Class<T> clasz) {
             if (clasz == null || ! clasz.isInterface ())
                 throw new IllegalArgumentException ("Class object is null or is not an interface");
 
@@ -551,7 +551,7 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
                                                        String name = method.getName ();
                                                        IFn fn = fns.get (name);
                                                        if (fn != null)
-                                                           return thiz == null ? callClojureF0 (fn, context, args) : callClojureF1 (fn, context, thiz, args);
+                                                           return thiz == null ? callClojureF0 (fn, args) : callClojureF1 (fn, thiz, args);
                                                        if ("toString".equals (name))
                                                            return "Proxy implementation of ClojureEngine/" + clasz.toString ();
                                                        if ("hashCode".equals (name))
@@ -577,9 +577,8 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
             if (c == null)
                 throw new NullPointerException ("context is null");
 
-            if (NS_PER_CONTEXT)
-                if (getContextNS (c) == null)
-                    c.setAttribute (NS_KEY, createNamespace (), ENGINE_SCOPE);
+            if (NS_PER_CONTEXT && c.getAttribute (NS_KEY, ENGINE_SCOPE) == null)
+                c.setAttribute (NS_KEY, createNamespace (), ENGINE_SCOPE);
 
             return callClojureZ (cc, c);
         }
