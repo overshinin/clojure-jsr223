@@ -18,6 +18,7 @@ import java.util.Properties;
 import java.util.WeakHashMap;
 
 import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
 
 import javax.script.Bindings;
 import javax.script.Compilable;
@@ -155,13 +156,16 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
       Template for Namespace name can be provided as JVM property (NS_TEMPLATE).
       If Template does not contain format specifiers (%d), all engines share single Namespace (NS_FORCED).
       Namespace can be global (NS_FORCED), created per ScriptEngine (default), or per ScriptContext (NS_PER_CONTEXT = false/false/true).
-      For the ScriptEngine methods, which do not accept ScriptContext, default (ScriptEngine) ScriptContext is used.
+      In the NS_PER_CONTEXT mode, Namespace is stored in ScriptContext(ENGINE_SCOPE) Bindings under "javax.script.Namespace" key
+      For the ScriptEngine methods, which do not accept ScriptContext, default (ScriptEngine) ScriptContext (and its namespace) is used.
+
+      TODO: Namespace can be created per Bindings ?
     */
     private static final String PACKAGE_NAME = ClojureEngineFactory.class.getPackage ().getName ();
     private static final String NS_TEMPLATE = System.getProperty (PACKAGE_NAME + ".NS_TEMPLATE", PACKAGE_NAME + ".ns-%d");
     private static final Namespace NS_FORCED = NS_TEMPLATE.equals (String.format (NS_TEMPLATE, 1)) ? createNamespace (NS_TEMPLATE) : null;
     private static final boolean NS_PER_CONTEXT = NS_FORCED == null && Boolean.getBoolean (PACKAGE_NAME + ".NS_PER_CONTEXT");
-    private static final String NSPC_KEY = "javax.script.Namespace";
+    private static final String NS_KEY = "javax.script.Namespace";
 
     // private static final Var REFER = RT.var ("clojure.core", "refer");
     // private static final Var WARN_ON_REFLECTION = RT.var ("clojure.core", "*warn-on-reflection*");
@@ -245,7 +249,7 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
 
         @Override
         public Bindings createBindings () {
-            return new SimpleBindings ();
+            return new SimpleBindings (new ConcurrentHashMap<String,Object> ());
         }
 
         @Override
@@ -314,6 +318,10 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
             if (scope != GLOBAL_SCOPE && scope != ENGINE_SCOPE)
                 throw new IllegalArgumentException("Invalid scope value.");
 
+            // TODO: Introduce NS_PER_BINDINGS
+            if (scope == ENGINE_SCOPE && NS_PER_CONTEXT)
+                b.put (NS_KEY, getContextNS (context));
+
             context.setBindings (b, scope);
         }
 
@@ -322,14 +330,14 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
             if (c == null)
                 throw new NullPointerException("context is null");
 
-            if (NS_PER_CONTEXT)
-                synchronized (c) {
-                    Namespace ns = (Namespace) c.getAttribute (NSPC_KEY, ENGINE_SCOPE);
-                    if (ns == null)
-                        c.setAttribute (NSPC_KEY, (namespace = createNamespace ()), ENGINE_SCOPE);
-                    else
-                        namespace = ns;
+            if (NS_PER_CONTEXT) {
+                Namespace ns = getContextNS (c);
+                if (ns == null) {
+                    ns = createNamespace ();
+                    c.setAttribute (NS_KEY, ns, ENGINE_SCOPE);
                 }
+                namespace = ns;
+            }
             context = c;
         }
 
@@ -358,7 +366,7 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
             private IFn compiled;
 
             ClojureCompiledScript (final Reader r, final ScriptContext c) throws ScriptException {
-                Namespace ns = NS_PER_CONTEXT ? (Namespace) c.getAttribute (NSPC_KEY, ENGINE_SCOPE) : ClojureEngine.this.namespace;
+                Namespace ns = NS_PER_CONTEXT ? getContextNS (c) : ClojureEngine.this.namespace;
                 final Reader ccr = ClojureConcatReader.wrap ("(fn [] ", r, ")");
 
                 callClojure (new Callable () {
@@ -457,17 +465,22 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
           Non-interface methods
         */
 
-        private ScriptContext context = new SimpleScriptContext();
+        // TODO: ? Rewrite ScriptContext, for ConcurrentHashMap as bindings
+        private ScriptContext context = new SimpleScriptContext ();
         private Namespace namespace = NS_FORCED != null ? NS_FORCED : createNamespace ();
 
         {
+            context.setBindings (createBindings (), ENGINE_SCOPE);
             if (NS_PER_CONTEXT)
-                context.setAttribute (NSPC_KEY, namespace, ENGINE_SCOPE);
+                context.setAttribute (NS_KEY, namespace, ENGINE_SCOPE);
         }
 
+        private Namespace getContextNS (final ScriptContext c) {
+            return (Namespace) c.getAttribute (NS_KEY, ENGINE_SCOPE);
+        }
 
         private Object callClojureZ (final Callable cc, final Bindings b, final ScriptContext c) throws ScriptException {
-            return callClojure (cc, addBindings (RT.map (RT.CURRENT_NS, NS_PER_CONTEXT ? (Namespace) c.getAttribute (NSPC_KEY, ENGINE_SCOPE) : namespace,
+            return callClojure (cc, addBindings (RT.map (RT.CURRENT_NS, NS_PER_CONTEXT ? getContextNS (c) : namespace,
                                                          RT.UNCHECKED_MATH, RT.UNCHECKED_MATH.deref (),
                                                          WARN_ON_REFLECTION, WARN_ON_REFLECTION.deref (),
                                                          // RT.IN, new LineNumberingPushbackReader (c.getReader ()),
@@ -498,7 +511,7 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
         }
 
         private IFn getClojureFN (final String name) throws NoSuchMethodException {
-            return getClojureFN (name, NS_PER_CONTEXT ? (Namespace) context.getAttribute (NSPC_KEY, ENGINE_SCOPE) : namespace);
+            return getClojureFN (name, NS_PER_CONTEXT ? getContextNS (context) : namespace);
         }
 
         private Object callClojureF0 (final IFn fn, final ScriptContext c, final Object... args) throws ScriptException {
@@ -522,7 +535,7 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
             if (clasz == null || ! clasz.isInterface ())
                 throw new IllegalArgumentException ("Class object is null or is not an interface");
 
-            Namespace ns = NS_PER_CONTEXT ? (Namespace) context.getAttribute (NSPC_KEY, ENGINE_SCOPE) : namespace;
+            Namespace ns = NS_PER_CONTEXT ? getContextNS (context) : namespace;
             String csn = clasz.getSimpleName ();
             final Map<String, IFn> fns = new HashMap<String, IFn> ();
             try {
@@ -565,10 +578,9 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
                 throw new NullPointerException ("context is null");
 
             if (NS_PER_CONTEXT)
-                synchronized (c) {
-                    if (c.getAttribute (NSPC_KEY, ENGINE_SCOPE) == null)
-                        c.setAttribute (NSPC_KEY, createNamespace (), ENGINE_SCOPE);
-                }
+                if (getContextNS (c) == null)
+                    c.setAttribute (NS_KEY, createNamespace (), ENGINE_SCOPE);
+
             return callClojureZ (cc, c);
         }
     }
