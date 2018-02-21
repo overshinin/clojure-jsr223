@@ -227,7 +227,7 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
                     @Override
                     public Object call () {
                         return REFER.invoke (RT.CLOJURE_NS.getName ());
-                    }}, RT.map (RT.CURRENT_NS, ns));
+                    }}, RT.mapUniqueKeys (RT.CURRENT_NS, ns));
         } catch (ScriptException e) {}
         return ns;
     }
@@ -380,23 +380,23 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
                                     compiledByNS.put ((Namespace) RT.CURRENT_NS.deref (), compiled);
                             } catch (Exception e) {}
                             return null;
-                        }}, addBindings (RT.map (Compiler.LOADER, RT.makeClassLoader (),
-                                                 Compiler.SOURCE_PATH, null,
-                                                 Compiler.SOURCE, "NO_SOURCE_FILE",
-                                                 Compiler.METHOD, null,
-                                                 Compiler.LOCAL_ENV, null,
-                                                 Compiler.LOOP_LOCALS, null,
-                                                 Compiler.NEXT_LOCAL_NUM, 0,
-                                                 Compiler.LINE_BEFORE, 1,
-                                                 Compiler.COLUMN_BEFORE, 1,
-                                                 Compiler.LINE_AFTER, 1,
-                                                 Compiler.COLUMN_AFTER, 1,
-                                                 RT.READEVAL, RT.T,
-                                                 RT.DATA_READERS, RT.DATA_READERS.deref (),
-                                                 // ALLOW_UNRESOLVED_VARS, ALLOW_UNRESOLVED_VARS.deref (),
-                                                 RT.CURRENT_NS, ns,
-                                                 RT.UNCHECKED_MATH, RT.UNCHECKED_MATH.deref (),
-                                                 WARN_ON_REFLECTION, WARN_ON_REFLECTION.deref ()),
+                        }}, addBindings (RT.mapUniqueKeys (Compiler.LOADER, RT.makeClassLoader (),
+                                                           Compiler.SOURCE_PATH, null,
+                                                           Compiler.SOURCE, "NO_SOURCE_FILE",
+                                                           Compiler.METHOD, null,
+                                                           Compiler.LOCAL_ENV, null,
+                                                           Compiler.LOOP_LOCALS, null,
+                                                           Compiler.NEXT_LOCAL_NUM, 0,
+                                                           Compiler.LINE_BEFORE, 1,
+                                                           Compiler.COLUMN_BEFORE, 1,
+                                                           Compiler.LINE_AFTER, 1,
+                                                           Compiler.COLUMN_AFTER, 1,
+                                                           RT.READEVAL, RT.T,
+                                                           RT.DATA_READERS, RT.DATA_READERS.deref (),
+                                                           // ALLOW_UNRESOLVED_VARS, ALLOW_UNRESOLVED_VARS.deref (),
+                                                           RT.CURRENT_NS, ns,
+                                                           RT.UNCHECKED_MATH, RT.UNCHECKED_MATH.deref (),
+                                                           WARN_ON_REFLECTION, WARN_ON_REFLECTION.deref ()),
                                          c.getBindings (ENGINE_SCOPE), c.getBindings (GLOBAL_SCOPE)));
             }
 
@@ -492,13 +492,13 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
         }
 
         private Object callClojureZ (final Callable cc, final Bindings b, final ScriptContext c) throws ScriptException {
-            return callClojure (cc, addBindings (RT.map (RT.CURRENT_NS, NS_PER_CONTEXT ? getContextNS (c) : namespace,
-                                                         RT.UNCHECKED_MATH, RT.UNCHECKED_MATH.deref (),
-                                                         WARN_ON_REFLECTION, WARN_ON_REFLECTION.deref (),
-                                                         // RT.IN, new LineNumberingPushbackReader (c.getReader ()),
-                                                         RT.IN, c.getReader (),
-                                                         RT.OUT, c.getWriter (),
-                                                         RT.ERR, c.getErrorWriter ()),
+            return callClojure (cc, addBindings (RT.mapUniqueKeys (RT.CURRENT_NS, NS_PER_CONTEXT ? getContextNS (c) : namespace,
+                                                                   RT.UNCHECKED_MATH, RT.UNCHECKED_MATH.deref (),
+                                                                   WARN_ON_REFLECTION, WARN_ON_REFLECTION.deref (),
+                                                                   // RT.IN, new LineNumberingPushbackReader (c.getReader ()),
+                                                                   RT.IN, c.getReader (),
+                                                                   RT.OUT, c.getWriter (),
+                                                                   RT.ERR, c.getErrorWriter ()),
                                                  b, c.getBindings (GLOBAL_SCOPE)));
         }
 
