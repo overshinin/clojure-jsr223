@@ -15,7 +15,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
-import java.util.WeakHashMap;
 
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
@@ -425,12 +424,12 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
             public Object call () { // implements Callable
                 if (NS_PER_CONTEXT) {
                     Namespace ns = (Namespace) RT.CURRENT_NS.deref ();
-                    IFn _compiled = compiledByNS.get (ns);
-                    if (_compiled == null) {
-                        _compiled = (IFn) Compiler.eval (parsed);
-                        compiledByNS.put (ns, _compiled);
+                    IFn cfn = compiledByNS.get (ns);
+                    if (cfn == null) {
+                        cfn = (IFn) Compiler.eval (parsed);
+                        compiledByNS.put (ns, cfn);
                     }
-                    return _compiled.invoke ();
+                    return cfn.invoke ();
                 }
                 if (compiled == null)
                     compiled = (IFn) Compiler.eval (parsed);
@@ -549,7 +548,17 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
             return callClojureZ (new Callable () {
                     @Override
                     public Object call () {
-                        return fn.applyTo (RT.cons (thiz, args));
+                        switch (args == null ? 0 : args.length) {
+                        case 0: return fn.invoke (thiz);
+                        case 1: return fn.invoke (thiz, args[0]);
+                        case 2: return fn.invoke (thiz, args[0], args[1]);
+                        case 3: return fn.invoke (thiz, args[0], args[1], args[2]);
+                        case 4: return fn.invoke (thiz, args[0], args[1], args[2], args[3]);
+                        case 5: return fn.invoke (thiz, args[0], args[1], args[2], args[3], args[4]);
+                        case 6: return fn.invoke (thiz, args[0], args[1], args[2], args[3], args[4], args[5]);
+                        case 7: return fn.invoke (thiz, args[0], args[1], args[2], args[3], args[4], args[5], args[6]);
+                        default: return fn.applyTo (RT.cons (thiz, args));
+                        }
                     }}, context);
         }
 
