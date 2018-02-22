@@ -1,7 +1,6 @@
 package clojure.scripting;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.Reader;
 import java.io.StringReader;
 
@@ -14,7 +13,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
@@ -57,20 +55,7 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
 
     static {
         String clojureName = "Clojure";
-        String clojureVersion = "not found";
-        try { // to get version number from clojure.jar
-            InputStream stream = ClojureEngineFactory.class.getClassLoader ().getResourceAsStream ("clojure/version.properties");
-            if (stream != null)
-                try {
-                    Properties properties = new Properties ();
-                    properties.load (stream);
-                    clojureVersion = properties.getProperty ("version", "unknown");
-                } finally {
-                    stream.close ();
-                }
-        } catch (Exception e) {
-            clojureVersion = "exception:" + e.toString ();
-        }
+        String clojureVersion = RT.CLOJURE_NS.intern (Symbol.intern (null, "clojure-version")).invoke ().toString ();
 
         ENGINE_PARAMS.put (ScriptEngine.ENGINE, clojureName);
         ENGINE_PARAMS.put (ScriptEngine.ENGINE_VERSION, clojureVersion);
