@@ -66,9 +66,13 @@
 ;; -------------------------------------------------- Engine (via ScriptEngineManager)
 (def ^ScriptEngineManager SEM (ScriptEngineManager.))
 
+(println (.getEngineFactories SEM))
+
 (def ^ScriptEngine SE (.getEngineByName SEM "Clojure"))
+;; (def ^ScriptEngine SE (.getEngineByExtension SEM "clj"))
 (def ^Compilable SEC SE)
 (def ^Invocable SEI SE)
+
 
 (def ^Bindings SEB (.createBindings SE))
 (def ^ScriptContext SSE (SimpleScriptContext.))
@@ -222,6 +226,15 @@
   (time (dotimes [i 1000000]
           (.invokeFunction SEI "+" args))))
 
+(let [b (doto (.createBindings SE) (.put "x" 2) (.put "y" 2))]
+  (time (dotimes [i 1000000]
+          (.eval CS4 b))))
+
+(let [b (doto (.createBindings SE) (.put "x" 2) (.put "y" 2)
+              (.put "a" 2) (.put "b" 2) (.put "c" 2) (.put "d" 2) (.put "e" 2) (.put "f" 2)
+              )]
+  (time (dotimes [i 1000000]
+          (.eval CS4 b))))
 
 
 (System/exit 0)
