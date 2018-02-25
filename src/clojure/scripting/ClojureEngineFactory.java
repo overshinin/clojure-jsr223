@@ -34,9 +34,13 @@ import static javax.script.ScriptContext.GLOBAL_SCOPE;
 import clojure.lang.Associative;
 import clojure.lang.Compiler;
 import clojure.lang.IFn;
+import clojure.lang.APersistentMap;
+import clojure.lang.ATransientMap;
 import clojure.lang.LineNumberingPushbackReader;
 import clojure.lang.LispReader;
 import clojure.lang.Namespace;
+import clojure.lang.PersistentArrayMap;
+import clojure.lang.PersistentHashMap;
 import clojure.lang.RT;
 import clojure.lang.Symbol;
 import clojure.lang.Var;
@@ -172,24 +176,70 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
         }
     }
 
-    private static Associative addBindings (final Associative tb, final Bindings... bs) {
-        Namespace ns = (Namespace) tb.valAt (RT.CURRENT_NS);
-        Associative a = tb;
+    // private static Associative addBindings (final Associative tb, final Bindings... bs) {
+    //     Namespace ns = (Namespace) tb.valAt (RT.CURRENT_NS);
+    //     Associative a = tb;
+    //     for (Bindings b : bs)
+    //         if (b != null)
+    //             for (Map.Entry<String, Object> entry : b.entrySet ()) {
+    //                 String k = entry.getKey ();
+    //                 if (! k.startsWith ("javax.script.") && ! a.containsKey (k)) {
+    //                     // Create dynamic typed VARs from scripting bindings
+    //                     Var var = ns.intern (Symbol.intern (null, k)).setDynamic ();
+    //                     Object v = entry.getValue ();
+    //                     if (v != null)
+    //                         var.setTag (Symbol.intern (null, v.getClass ().getName ()));
+    //                     a = a.assoc (var, v);
+    //                 }
+    //             }
+    //     return a;
+    // }
+
+    private static Associative addBindings (final APersistentMap tb, final Bindings... bs) {
+        Namespace ns = null;
+        ATransientMap tm = null;
         for (Bindings b : bs)
             if (b != null)
                 for (Map.Entry<String, Object> entry : b.entrySet ()) {
                     String k = entry.getKey ();
-                    if (! k.startsWith ("javax.script.") && ! a.containsKey (k)) {
+                    if ( ! (k.startsWith ("javax.script.") || (tm == null || tm.containsKey (k)) && tb.containsKey (k))) {
+                        if (tm == null) {
+                            ns = (Namespace) tb.valAt (RT.CURRENT_NS);
+                            tm = PersistentHashMap.EMPTY.asTransient ();
+                            for (Object o : tb.entrySet ()) {
+                                Map.Entry e = (Map.Entry) o;
+                                tm = (ATransientMap) tm.assoc (e.getKey (), e.getValue ());
+                            }
+                        }
                         // Create dynamic typed VARs from scripting bindings
                         Var var = ns.intern (Symbol.intern (null, k)).setDynamic ();
                         Object v = entry.getValue ();
                         if (v != null)
                             var.setTag (Symbol.intern (null, v.getClass ().getName ()));
-                        a = a.assoc (var, v);
+                        tm = (ATransientMap) tm.assoc (var, v);
                     }
                 }
-        return a;
+        return tm != null ? tm.persistent () : tb;
     }
+
+    // private static IPersistentMap createClojureBindings (final IPersistentMap init, final Bindings... bs) {
+    //     ITransientMap tm = init.asTransient ();
+    //     Namespace ns = (Namespace) tm.valAt (RT.CURRENT_NS);
+    //     for (Bindings b : bs)
+    //         if (b != null)
+    //             for (Map.Entry<String, Object> entry : b.entrySet ()) {
+    //                 String k = entry.getKey ();
+    //                 if (! k.startsWith ("javax.script.") && ! init.containsKey (k)) {
+    //                     // Create dynamic typed VARs from scripting bindings
+    //                     Var var = ns.intern (Symbol.intern (null, k)).setDynamic ();
+    //                     Object v = entry.getValue ();
+    //                     if (v != null)
+    //                         var.setTag (Symbol.intern (null, v.getClass ().getName ()));
+    //                     tm = tm.assoc (var, v);
+    //                 }
+    //             }
+    //     return tm.persistent ();
+    // }
 
     private static Callable asCompilerLoad (final Reader r) {
         if (r == null)
@@ -365,24 +415,25 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
                                     compiledByNS.put ((Namespace) RT.CURRENT_NS.deref (), compiled);
                             } catch (Exception e) {}
                             return null;
-                        }}, addBindings (RT.mapUniqueKeys (Compiler.LOADER, RT.makeClassLoader (),
-                                                           Compiler.SOURCE_PATH, null,
-                                                           Compiler.SOURCE, "NO_SOURCE_FILE",
-                                                           Compiler.METHOD, null,
-                                                           Compiler.LOCAL_ENV, null,
-                                                           Compiler.LOOP_LOCALS, null,
-                                                           Compiler.NEXT_LOCAL_NUM, 0,
-                                                           Compiler.LINE_BEFORE, 1,
-                                                           Compiler.COLUMN_BEFORE, 1,
-                                                           Compiler.LINE_AFTER, 1,
-                                                           Compiler.COLUMN_AFTER, 1,
-                                                           RT.READEVAL, RT.T,
-                                                           RT.DATA_READERS, RT.DATA_READERS.deref (),
-                                                           // ALLOW_UNRESOLVED_VARS, ALLOW_UNRESOLVED_VARS.deref (),
-                                                           RT.CURRENT_NS, ns,
-                                                           RT.UNCHECKED_MATH, RT.UNCHECKED_MATH.deref (),
-                                                           WARN_ON_REFLECTION, WARN_ON_REFLECTION.deref ()),
-                                         c.getBindings (ENGINE_SCOPE), c.getBindings (GLOBAL_SCOPE)));
+                        }}, addBindings (new PersistentArrayMap (new Object [] {
+                                    Compiler.LOADER, RT.makeClassLoader (),
+                                    Compiler.SOURCE_PATH, null,
+                                    Compiler.SOURCE, "NO_SOURCE_FILE",
+                                    Compiler.METHOD, null,
+                                    Compiler.LOCAL_ENV, null,
+                                    Compiler.LOOP_LOCALS, null,
+                                    Compiler.NEXT_LOCAL_NUM, 0,
+                                    Compiler.LINE_BEFORE, 1,
+                                    Compiler.COLUMN_BEFORE, 1,
+                                    Compiler.LINE_AFTER, 1,
+                                    Compiler.COLUMN_AFTER, 1,
+                                    RT.READEVAL, RT.T,
+                                    RT.DATA_READERS, RT.DATA_READERS.deref (),
+                                    // ALLOW_UNRESOLVED_VARS, ALLOW_UNRESOLVED_VARS.deref (),
+                                    RT.CURRENT_NS, ns,
+                                    RT.UNCHECKED_MATH, RT.UNCHECKED_MATH.deref (),
+                                    WARN_ON_REFLECTION, WARN_ON_REFLECTION.deref ()}),
+                            c.getBindings (ENGINE_SCOPE), c.getBindings (GLOBAL_SCOPE)));
             }
 
             @Override
@@ -477,14 +528,15 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
         }
 
         private Object callClojureZ (final Callable cc, final Bindings b, final ScriptContext c) throws ScriptException {
-            return callClojure (cc, addBindings (RT.mapUniqueKeys (RT.CURRENT_NS, NS_PER_CONTEXT ? getContextNS (c) : namespace,
-                                                                   RT.UNCHECKED_MATH, RT.UNCHECKED_MATH.deref (),
-                                                                   WARN_ON_REFLECTION, WARN_ON_REFLECTION.deref (),
-                                                                   // RT.IN, new LineNumberingPushbackReader (c.getReader ()),
-                                                                   RT.IN, c.getReader (),
-                                                                   RT.OUT, c.getWriter (),
-                                                                   RT.ERR, c.getErrorWriter ()),
-                                                 b, c.getBindings (GLOBAL_SCOPE)));
+            return callClojure (cc, addBindings (new PersistentArrayMap (new Object[] {
+                            RT.CURRENT_NS, NS_PER_CONTEXT ? getContextNS (c) : namespace,
+                            RT.UNCHECKED_MATH, RT.UNCHECKED_MATH.deref (),
+                            WARN_ON_REFLECTION, WARN_ON_REFLECTION.deref (),
+                            // RT.IN, new LineNumberingPushbackReader (c.getReader ()),
+                            RT.IN, c.getReader (),
+                            RT.OUT, c.getWriter (),
+                            RT.ERR, c.getErrorWriter ()}),
+                    b, c.getBindings (GLOBAL_SCOPE)));
         }
 
         private Object callClojureZ (final Callable cc, final ScriptContext c) throws ScriptException {
