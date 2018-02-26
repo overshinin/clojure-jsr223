@@ -416,6 +416,12 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
                             } catch (Exception e) {}
                             return null;
                         }}, addBindings (new PersistentArrayMap (new Object [] {
+                                    RT.CURRENT_NS, ns,
+                                    RT.UNCHECKED_MATH, RT.UNCHECKED_MATH.deref (),
+                                    WARN_ON_REFLECTION, WARN_ON_REFLECTION.deref (),
+                                    RT.READEVAL, RT.T,
+                                    RT.DATA_READERS, RT.DATA_READERS.deref (),
+                                    // ALLOW_UNRESOLVED_VARS, ALLOW_UNRESOLVED_VARS.deref (),
                                     Compiler.LOADER, RT.makeClassLoader (),
                                     Compiler.SOURCE_PATH, null,
                                     Compiler.SOURCE, "NO_SOURCE_FILE",
@@ -426,13 +432,8 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
                                     Compiler.LINE_BEFORE, 1,
                                     Compiler.COLUMN_BEFORE, 1,
                                     Compiler.LINE_AFTER, 1,
-                                    Compiler.COLUMN_AFTER, 1,
-                                    RT.READEVAL, RT.T,
-                                    RT.DATA_READERS, RT.DATA_READERS.deref (),
-                                    // ALLOW_UNRESOLVED_VARS, ALLOW_UNRESOLVED_VARS.deref (),
-                                    RT.CURRENT_NS, ns,
-                                    RT.UNCHECKED_MATH, RT.UNCHECKED_MATH.deref (),
-                                    WARN_ON_REFLECTION, WARN_ON_REFLECTION.deref ()}),
+                                    Compiler.COLUMN_AFTER, 1
+                                }),
                             c.getBindings (ENGINE_SCOPE), c.getBindings (GLOBAL_SCOPE)));
             }
 
