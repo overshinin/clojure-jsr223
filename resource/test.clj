@@ -226,11 +226,11 @@
   (time (dotimes [i 1000000]
           (.invokeFunction SEI "+" args))))
 
-(let [b (doto (.createBindings SE) (.put "x" 2) (.put "y" 2))]
+(let [b (doto ^Bindings (.createBindings SE) (.put "x" 2) (.put "y" 2))]
   (time (dotimes [i 1000000]
           (.eval CS4 b))))
 
-(let [b (doto (.createBindings SE) (.put "x" 2) (.put "y" 2)
+(let [b (doto ^Bindings (.createBindings SE) (.put "x" 2) (.put "y" 2)
               (.put "a" 2) (.put "b" 2) (.put "c" 2) (.put "d" 2) (.put "e" 2) (.put "f" 2)
               )]
   (time (dotimes [i 1000000]
