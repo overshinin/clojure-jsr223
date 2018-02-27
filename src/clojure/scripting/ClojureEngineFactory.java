@@ -93,8 +93,9 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
     @Override
     public String getMethodCallSyntax (final String obj, final String m, final String... args) {
         StringBuilder sb = new StringBuilder ("(.").append (m).append (' ').append (obj);
-        for (String arg : args)
-            sb.append (' ').append (arg);
+        if (args != null)
+            for (String arg : args)
+                sb.append (' ').append (arg);
         return sb.append (")").toString ();
     }
 
@@ -110,7 +111,7 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
 
     @Override
     public String getOutputStatement (final String toDisplay) {
-        return new StringBuilder ("(println ").append (toDisplay).append (")").toString ();
+        return new StringBuilder ("(println \"").append (toDisplay == null ? "null" : toDisplay.replace ("\"", "\\\"")).append ("\")").toString ();
     }
 
     @Override
@@ -121,8 +122,9 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
     @Override
     public String getProgram (final String... statements) {
         StringBuilder sb = new StringBuilder ("(do");
-        for (String statement : statements)
-            sb.append (' ').append (statement);
+        if (statements != null)
+            for (String statement : statements)
+                sb.append (' ').append (statement);
         return sb.append (")").toString ();
     }
 

@@ -54,8 +54,14 @@
 (t/is (= (TRACE SEF0 getParameter "THREADING") "MULTITHREADED"))
 
 (t/is (= (TRACE SEF0 getMethodCallSyntax "obj" "m" (into-array String ["arg1" "arg2"])) "(.m obj arg1 arg2)"))
-(t/is (= (TRACE SEF0 getOutputStatement "123") "(println 123)"))
+(t/is (= (TRACE SEF0 getOutputStatement nil) "(println \"null\")"))
+(t/is (= (TRACE SEF0 getOutputStatement "123") "(println \"123\")"))
+(t/is (= (TRACE SEF0 getOutputStatement "'abc:\"ced\"'") "(println \"'abc:\\\"ced\\\"'\")"))
 (t/is (= (TRACE SEF0 getProgram (into-array String ["(map identity (range 10))" "123"])) "(do (map identity (range 10)) 123)"))
+
+;; (load-string (.getOutputStatement SEF0 nil))
+;; (load-string (.getOutputStatement SEF0 "123"))
+;; (load-string (.getOutputStatement SEF0 "'abc:\"ced\"'"))
 
 ;; -------------------------------------------------- Engine (via ScriptEngineManager)
 (def ^ScriptEngineManager SEM (ScriptEngineManager.))
