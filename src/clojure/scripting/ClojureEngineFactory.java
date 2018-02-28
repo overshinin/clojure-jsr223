@@ -380,7 +380,7 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
                             if (NS_PER_CONTEXT)
                                 compiledByNS = new ConcurrentHashMap<Namespace, IFn> ();
                             try { // optionally; may fail due to missing vars/bindings, but try to use Engine/Global bindings
-                                compiled = (IFn) Compiler.eval (parsed);
+                                compiled = (IFn) Compiler.eval (parsed, false);
                                 if (NS_PER_CONTEXT)
                                     compiledByNS.put ((Namespace) RT.CURRENT_NS.deref (), compiled);
                             } catch (Exception e) {}
@@ -392,7 +392,7 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
                                 RT.READEVAL, RT.T,
                                 RT.DATA_READERS, RT.DATA_READERS.deref (),
                                 // ALLOW_UNRESOLVED_VARS, ALLOW_UNRESOLVED_VARS.deref (),
-                                Compiler.LOADER, RT.makeClassLoader (),
+                                Compiler.LOADER, RT.makeClassLoader(),
                                 Compiler.SOURCE_PATH, null,
                                 Compiler.SOURCE, "NO_SOURCE_FILE",
                                 Compiler.METHOD, null,
@@ -432,14 +432,37 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
                     Namespace ns = (Namespace) RT.CURRENT_NS.deref ();
                     IFn cfn = compiledByNS.get (ns);
                     if (cfn == null) {
-                        cfn = (IFn) Compiler.eval (parsed);
+                        cfn = compilerEval ();
                         compiledByNS.put (ns, cfn);
                     }
                     return cfn.invoke ();
                 }
                 if (compiled == null)
-                    compiled = (IFn) Compiler.eval (parsed);
+                    compiled = compilerEval ();
                 return compiled.invoke ();
+            }
+
+            private IFn compilerEval () {
+                Var.pushThreadBindings (new PersistentArrayMap (new Object [] {
+                            RT.READEVAL, RT.T,
+                            RT.DATA_READERS, RT.DATA_READERS.deref (),
+                            // ALLOW_UNRESOLVED_VARS, ALLOW_UNRESOLVED_VARS.deref (),
+                            // Compiler.LOADER, RT.makeClassLoader(),
+                            Compiler.SOURCE_PATH, null,
+                            Compiler.SOURCE, "NO_SOURCE_FILE",
+                            Compiler.METHOD, null,
+                            Compiler.LOCAL_ENV, null,
+                            Compiler.LOOP_LOCALS, null,
+                            Compiler.NEXT_LOCAL_NUM, 0,
+                            Compiler.LINE_BEFORE, 1,
+                            Compiler.COLUMN_BEFORE, 1,
+                            Compiler.LINE_AFTER, 1,
+                            Compiler.COLUMN_AFTER, 1}));
+                try {
+                    return (IFn) Compiler.eval (parsed);
+                } finally {
+                    Var.popThreadBindings ();
+                }
             }
         }
 
@@ -584,7 +607,7 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
                 return null;
             }
 
-            return (T) Proxy.newProxyInstance (RT.makeClassLoader (), new Class[] {clasz},
+            return (T) Proxy.newProxyInstance (ClojureEngineFactory.class.getClassLoader (), new Class[] {clasz},
                                                new InvocationHandler () {
                                                    public Object invoke (final Object proxy, final Method method, final Object[] args) throws Throwable {
                                                        String name = method.getName ();
