@@ -176,6 +176,7 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
     }
 
     private static IPersistentMap addBindings (final Object[] tbinit, final Bindings... bs) {
+        assert tbinit != null;
         IPersistentMap tb = new PersistentArrayMap (tbinit);
         Map<Var, Object> mb = null;
         Namespace ns = null;
@@ -203,7 +204,8 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
 
         int i = tbinit.length;
         Object[] os = new Object [i + mb.size () * 2];
-        System.arraycopy (tbinit, 0, os, 0, i);
+        if (i != 0)
+            System.arraycopy (tbinit, 0, os, 0, i);
         for (Map.Entry<Var, Object> e : mb.entrySet ()) {
             os [i++] = e.getKey ();
             os [i++] = e.getValue ();
@@ -222,6 +224,10 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
             }};
     }
 
+    private static IPersistentMap mapUniqueKeys (final Object... init) {
+        return new PersistentArrayMap (init);
+    }
+
     /*
       Namespaces support
     */
@@ -232,7 +238,7 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
                     @Override
                     public Object call () {
                         return REFER.invoke (RT.CLOJURE_NS.getName ());
-                    }}, RT.mapUniqueKeys (RT.CURRENT_NS, ns));
+                    }}, mapUniqueKeys (RT.CURRENT_NS, ns));
         } catch (ScriptException e) {}
         return ns;
     }
@@ -369,41 +375,47 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
             private Map<Namespace, IFn> compiledByNS;
 
             ClojureCompiledScript (final Reader r) throws ScriptException {
-                ScriptContext c = ClojureEngine.this.context;
-                Namespace ns = NS_PER_CONTEXT ? getContextNS (c) : ClojureEngine.this.namespace;
+                final ScriptContext c = ClojureEngine.this.context;
+                final Namespace ns = NS_PER_CONTEXT ? getContextNS (c) : ClojureEngine.this.namespace;
 
                 callClojure (new Callable () {
                         @Override
                         public Object call () {
                             // parsed = LispReader.read (new LineNumberingPushbackReader (r), null); // from Clojure 1.7.0
                             parsed = LispReader.read (new LineNumberingPushbackReader (r), true, null, false); // Clojure 1.5.1
+
                             if (NS_PER_CONTEXT)
                                 compiledByNS = new ConcurrentHashMap<Namespace, IFn> ();
                             try { // optionally; may fail due to missing vars/bindings, but try to use Engine/Global bindings
-                                compiled = (IFn) Compiler.eval (parsed, false);
+                                IFn compiled0 = (IFn) callClojure (new Callable () {
+                                        @Override
+                                        public Object call () {
+                                            return Compiler.eval (parsed, false);
+                                        }}, addBindings (new Object [0], c.getBindings (ENGINE_SCOPE), c.getBindings (GLOBAL_SCOPE)));
                                 if (NS_PER_CONTEXT)
-                                    compiledByNS.put ((Namespace) RT.CURRENT_NS.deref (), compiled);
+                                    compiledByNS.put ((Namespace) RT.CURRENT_NS.deref (), compiled0);
+                                else
+                                    compiled = compiled0;
                             } catch (Exception e) {}
+
                             return null;
-                        }}, addBindings (new Object [] {
-                                RT.CURRENT_NS, ns,
-                                RT.UNCHECKED_MATH, RT.UNCHECKED_MATH.deref (),
-                                WARN_ON_REFLECTION, WARN_ON_REFLECTION.deref (),
-                                RT.READEVAL, RT.T,
-                                RT.DATA_READERS, RT.DATA_READERS.deref (),
-                                // ALLOW_UNRESOLVED_VARS, ALLOW_UNRESOLVED_VARS.deref (),
-                                Compiler.LOADER, RT.makeClassLoader(),
-                                Compiler.SOURCE_PATH, null,
-                                Compiler.SOURCE, "NO_SOURCE_FILE",
-                                Compiler.METHOD, null,
-                                Compiler.LOCAL_ENV, null,
-                                Compiler.LOOP_LOCALS, null,
-                                Compiler.NEXT_LOCAL_NUM, 0,
-                                Compiler.LINE_BEFORE, 1,
-                                Compiler.COLUMN_BEFORE, 1,
-                                Compiler.LINE_AFTER, 1,
-                                Compiler.COLUMN_AFTER, 1},
-                            c.getBindings (ENGINE_SCOPE), c.getBindings (GLOBAL_SCOPE)));
+                        }}, mapUniqueKeys (RT.CURRENT_NS, ns,
+                                           RT.UNCHECKED_MATH, RT.UNCHECKED_MATH.deref (),
+                                           WARN_ON_REFLECTION, WARN_ON_REFLECTION.deref (),
+                                           RT.READEVAL, RT.T,
+                                           RT.DATA_READERS, RT.DATA_READERS.deref (),
+                                           // ALLOW_UNRESOLVED_VARS, ALLOW_UNRESOLVED_VARS.deref (),
+                                           Compiler.LOADER, RT.makeClassLoader(),
+                                           Compiler.SOURCE_PATH, null,
+                                           Compiler.SOURCE, "NO_SOURCE_FILE",
+                                           Compiler.METHOD, null,
+                                           Compiler.LOCAL_ENV, null,
+                                           Compiler.LOOP_LOCALS, null,
+                                           Compiler.NEXT_LOCAL_NUM, 0,
+                                           Compiler.LINE_BEFORE, 1,
+                                           Compiler.COLUMN_BEFORE, 1,
+                                           Compiler.LINE_AFTER, 1,
+                                           Compiler.COLUMN_AFTER, 1));
             }
 
             @Override
@@ -427,42 +439,42 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
             }
 
             @Override
-            public Object call () { // implements Callable
-                if (NS_PER_CONTEXT) {
-                    Namespace ns = (Namespace) RT.CURRENT_NS.deref ();
-                    IFn cfn = compiledByNS.get (ns);
-                    if (cfn == null) {
-                        cfn = compilerEval ();
-                        compiledByNS.put (ns, cfn);
-                    }
-                    return cfn.invoke ();
-                }
-                if (compiled == null)
-                    compiled = compilerEval ();
-                return compiled.invoke ();
-            }
+            public Object call () throws ScriptException { // implements Callable
+                if (compiled != null)
+                    return compiled.invoke ();
 
-            private IFn compilerEval () {
-                Var.pushThreadBindings (new PersistentArrayMap (new Object [] {
-                            RT.READEVAL, RT.T,
-                            RT.DATA_READERS, RT.DATA_READERS.deref (),
-                            // ALLOW_UNRESOLVED_VARS, ALLOW_UNRESOLVED_VARS.deref (),
-                            // Compiler.LOADER, RT.makeClassLoader(),
-                            Compiler.SOURCE_PATH, null,
-                            Compiler.SOURCE, "NO_SOURCE_FILE",
-                            Compiler.METHOD, null,
-                            Compiler.LOCAL_ENV, null,
-                            Compiler.LOOP_LOCALS, null,
-                            Compiler.NEXT_LOCAL_NUM, 0,
-                            Compiler.LINE_BEFORE, 1,
-                            Compiler.COLUMN_BEFORE, 1,
-                            Compiler.LINE_AFTER, 1,
-                            Compiler.COLUMN_AFTER, 1}));
-                try {
-                    return (IFn) Compiler.eval (parsed);
-                } finally {
-                    Var.popThreadBindings ();
+                IFn compiled0 = null;
+                Namespace ns = null;
+                if (NS_PER_CONTEXT) {
+                    ns = (Namespace) RT.CURRENT_NS.deref ();
+                    compiled0 = compiledByNS.get (ns);
                 }
+
+                if (compiled0 == null) {
+                    compiled0 = (IFn) callClojure (new Callable () {
+                            @Override
+                            public Object call () {
+                                return Compiler.eval (parsed);
+                            }}, mapUniqueKeys (RT.READEVAL, RT.T,
+                                               RT.DATA_READERS, RT.DATA_READERS.deref (),
+                                               // ALLOW_UNRESOLVED_VARS, ALLOW_UNRESOLVED_VARS.deref (),
+                                               // Compiler.LOADER, RT.makeClassLoader(),
+                                               Compiler.SOURCE_PATH, null,
+                                               Compiler.SOURCE, "NO_SOURCE_FILE",
+                                               Compiler.METHOD, null,
+                                               Compiler.LOCAL_ENV, null,
+                                               Compiler.LOOP_LOCALS, null,
+                                               Compiler.NEXT_LOCAL_NUM, 0,
+                                               Compiler.LINE_BEFORE, 1,
+                                               Compiler.COLUMN_BEFORE, 1,
+                                               Compiler.LINE_AFTER, 1,
+                                               Compiler.COLUMN_AFTER, 1));
+                    if (NS_PER_CONTEXT)
+                        compiledByNS.put (ns, compiled0);
+                    else
+                        compiled = compiled0;
+                }
+                return compiled0.invoke ();
             }
         }
 
@@ -607,21 +619,20 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
                 return null;
             }
 
-            return (T) Proxy.newProxyInstance (ClojureEngineFactory.class.getClassLoader (), new Class[] {clasz},
-                                               new InvocationHandler () {
-                                                   public Object invoke (final Object proxy, final Method method, final Object[] args) throws Throwable {
-                                                       String name = method.getName ();
-                                                       IFn fn = fns.get (name);
-                                                       if (fn != null)
-                                                           return thiz == null ? callClojureF0 (fn, args) : callClojureF1 (fn, thiz, args);
-                                                       if ("toString".equals (name))
-                                                           return "Proxy implementation of ClojureEngine/" + clasz.toString ();
-                                                       if ("hashCode".equals (name))
-                                                           return (thiz != null ? thiz : this).hashCode ();
-                                                       if ("equals".equals (name))
-                                                           return (thiz != null ? thiz : this).equals (args [0]);
-                                                       throw new NoSuchMethodException (name);
-                                                   }});
+            return (T) Proxy.newProxyInstance (ClojureEngineFactory.class.getClassLoader (), new Class[] {clasz}, new InvocationHandler () {
+                    public Object invoke (final Object proxy, final Method method, final Object[] args) throws Throwable {
+                        String name = method.getName ();
+                        IFn fn = fns.get (name);
+                        if (fn != null)
+                            return thiz == null ? callClojureF0 (fn, args) : callClojureF1 (fn, thiz, args);
+                        if ("toString".equals (name))
+                            return "Proxy implementation of ClojureEngine/" + clasz.toString ();
+                        if ("hashCode".equals (name))
+                            return (thiz != null ? thiz : this).hashCode ();
+                        if ("equals".equals (name))
+                            return (thiz != null ? thiz : this).equals (args [0]);
+                        throw new NoSuchMethodException (name);
+                    }});
         }
 
         private Object callClojureA (final Callable cc) throws ScriptException {

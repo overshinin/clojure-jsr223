@@ -79,6 +79,7 @@
   <target name="runtest5" depends="jar">
     <java classname="clojure.main" fork="true" jvm="${env.JAVA_HOME_5}/bin/java">
       <jvmarg value="-showversion"/>
+      <jvmarg value="-enableassertions"/>
       <jvmarg value="-Dtest.verbose=${test.verbose}"/>
       <arg value="${resource}/test.clj"/>
       <classpath>
@@ -92,6 +93,7 @@
   <target name="runtest" depends="jar">
     <java classname="clojure.main" fork="true">
       <jvmarg value="-showversion"/>
+      <jvmarg value="-enableassertions"/>
       <jvmarg value="-Dtest.verbose=${test.verbose}"/>
       <arg value="${resource}/test.clj"/>
       <classpath refid="clojure.class.path"/>
@@ -104,6 +106,7 @@
   <target name="runtestu" depends="jar">
     <java classname="clojure.main" fork="true">
       <jvmarg value="-showversion"/>
+      <jvmarg value="-enableassertions"/>
       <jvmarg value="-Dtest.verbose=${test.verbose}"/>
       <jvmarg value="-Dclojure.scripting.NS_TEMPLATE=user"/>
       <arg value="${resource}/test.clj"/>
@@ -117,6 +120,7 @@
   <target name="runtestn" depends="jar">
     <java classname="clojure.main" fork="true">
       <jvmarg value="-showversion"/>
+      <jvmarg value="-enableassertions"/>
       <jvmarg value="-Dtest.verbose=${test.verbose}"/>
       <jvmarg value="-Dclojure.scripting.NS_TEMPLATE=c.s.n%d"/>
       <arg value="${resource}/test.clj"/>
@@ -130,6 +134,7 @@
   <target name="runtestc" depends="jar">
     <java classname="clojure.main" fork="true">
       <jvmarg value="-showversion"/>
+      <jvmarg value="-enableassertions"/>
       <jvmarg value="-Dtest.verbose=${test.verbose}"/>
       <jvmarg value="-Dclojure.scripting.NS_PER_CONTEXT=true"/>
       <arg value="${resource}/test.clj"/>
