@@ -225,6 +225,7 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
     }
 
     private static IPersistentMap mapUniqueKeys (final Object... init) {
+        assert init != null;
         return new PersistentArrayMap (init);
     }
 
@@ -393,7 +394,7 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
                                             return Compiler.eval (parsed, false);
                                         }}, addBindings (new Object [0], c.getBindings (ENGINE_SCOPE), c.getBindings (GLOBAL_SCOPE)));
                                 if (NS_PER_CONTEXT)
-                                    compiledByNS.put ((Namespace) RT.CURRENT_NS.deref (), compiled0);
+                                    compiledByNS.put (ns, compiled0);
                                 else
                                     compiled = compiled0;
                             } catch (Exception e) {}
