@@ -6,13 +6,7 @@
                          CompiledScript SimpleScriptContext ScriptEngineManager ScriptException)
            (java.io ByteArrayOutputStream OutputStreamWriter)))
 
-;; (defmacro PRINT [o m & p]
-;;   `(let [r# (try (. ~o ~m ~@p) (catch Exception e# e#))]
-;;      (println (str '~o "." '~m '~p ":" (if (nil? r#) " nil" (format "(%s): %s" (type r#) r#))
-;;                    (if (instance? Exception r#) (format ", caused by: %s" (.getCause ^Exception r#))))) r#))
-
 (def TEST_VERBOSE (Boolean/getBoolean "test.verbose"))
-;; (println "TEST_VERBOSE" TEST_VERBOSE)
 
 (defmacro TRACE [o m & p]
   (if TEST_VERBOSE
@@ -23,15 +17,9 @@
        (if b# (throw b#) a#))
     `(. ~o ~m ~@p)))
 
-;; (def CLOJURE-VERSION-STR (clojure-version))
-;; (def CLOJURE-VERSION-STR (apply str (interpose "." ((juxt :major :minor :incremental) *clojure-version*))))
-;; (def CLOJURE-VERSION-STR (clojure.string/join "." ((juxt :major :minor :incremental) *clojure-version*))) 
-
 (def NS_TEMPLATE (System/getProperty "clojure.scripting.NS_TEMPLATE" "clojure.scripting.ns-%d"))
 (def NS_IS_CONSTANT (= NS_TEMPLATE (format NS_TEMPLATE 1)))
 (def NS_PER_CONTEXT (and (not NS_IS_CONSTANT) (System/getProperty "clojure.scripting.NS_PER_CONTEXT")))
-
-;; (def DEFAULT_NS (.eval SE "*ns*"))
 
 ;; -------------------------------------------------- Factory (explicit class name)
 (def ^ScriptEngineFactory SEF0 (clojure.scripting.ClojureEngineFactory.))
@@ -59,20 +47,13 @@
 (t/is (= (TRACE SEF0 getOutputStatement "'abc:\"ced\"'") "(println \"'abc:\\\"ced\\\"'\")"))
 (t/is (= (TRACE SEF0 getProgram (into-array String ["(map identity (range 10))" "123"])) "(do (map identity (range 10)) 123)"))
 
-;; (load-string (.getOutputStatement SEF0 nil))
-;; (load-string (.getOutputStatement SEF0 "123"))
-;; (load-string (.getOutputStatement SEF0 "'abc:\"ced\"'"))
-
 ;; -------------------------------------------------- Engine (via ScriptEngineManager)
 (def ^ScriptEngineManager SEM (ScriptEngineManager.))
-
-(println (.getEngineFactories SEM))
 
 (def ^ScriptEngine SE (.getEngineByName SEM "Clojure"))
 ;; (def ^ScriptEngine SE (.getEngineByExtension SEM "clj"))
 (def ^Compilable SEC SE)
 (def ^Invocable SEI SE)
-
 
 (def ^Bindings SEB (.createBindings SE))
 (def ^ScriptContext SSE (SimpleScriptContext.))
@@ -81,26 +62,45 @@
 
 (def DEFAULT_NS (TRACE SE eval "*ns*"))
 
-
 ;; TEST simple eval, good or bad, with bindings and context
+
+(t/is (= (TRACE SE eval "[*ns*]") [DEFAULT_NS]))
+(t/is (= (TRACE SE eval "(+ 2 2)") 4))
+(t/is (= (TRACE SE eval "(println (+ 2 2))") nil))
+
+(t/is (ifn? (TRACE SE eval "(defn four [_ _] (+ 2 2))")))
+(t/is (ifn? (TRACE SE eval "(defn reflect [x y] (+ (.intValue x) (.longValue y)))")))
+
+(t/is (= (TRACE SE eval "(four :a :b)") 4))
+(t/is (= (TRACE SE eval "(reflect 2 2)") 4))
+
+(t/is (thrown-with-msg? ScriptException #"Unable to resolve symbol" (TRACE SE eval "(defn bad [] \n (+ \n 2 \n 2 \n x))")))
+(t/is (thrown-with-msg? ScriptException #"Divide by zero" (.eval SE "(/ 1 0)")))
+(t/is (thrown-with-msg? ScriptException #"EOF while reading" (.eval SE "(defn bad-not-read [] ((((")))
+
+(t/is (= (let [baos (ByteArrayOutputStream.)]
+           (TRACE SE eval "(println (+ 2 2))" (doto (SimpleScriptContext.) (.setWriter (OutputStreamWriter. baos))))
+           (clojure.string/trim (.toString baos))) "4"))
+
+;; (t/is (= (let [baos (ByteArrayOutputStream.)] ;; ScriptContext's writer/reader overrides *out*/*in* passed as vars
+;;            (TRACE SE eval "(println (+ 2 2))" (doto (.createBindings SE) (.put "*out*" baos)))
+;;            (clojure.string/trim (.toString baos))) "4"))
+
+
 ;; TEST compile, good or bad
 
-(def ^CompiledScript CS1 (t/is (as-> (TRACE SEC compile "*ns*") $ (if (instance? CompiledScript $) $))))
-(def ^CompiledScript CS2 (t/is (as-> (TRACE SEC compile "(+ 2 2)") $ (if (instance? CompiledScript $) $))))
-(def ^CompiledScript CS3 (t/is (as-> (TRACE SEC compile "(println (+ 2 2))") $ (if (instance? CompiledScript $) $))))
-(def ^CompiledScript CS4 (t/is (as-> (TRACE SEC compile "(+ x y)") $ (if (instance? CompiledScript $) $))))
-(def ^CompiledScript CS5 (t/is (as-> (TRACE SEC compile "(let [r (+ x y) ] (println r) [*ns* r])") $ (if (instance? CompiledScript $) $))))
+(defn compiled-script? [v]
+  (if (instance? CompiledScript v) v))
 
-(t/is (thrown-with-msg? ScriptException #"EOF while reading"
-                        (TRACE SEC compile "(+ 2 2")))
+(def ^CompiledScript CS1 (t/is (compiled-script? (TRACE SEC compile "*ns*"))))
+(def ^CompiledScript CS2 (t/is (compiled-script? (TRACE SEC compile "(+ 2 2)"))))
+(def ^CompiledScript CS3 (t/is (compiled-script? (TRACE SEC compile "(println (+ 2 2))"))))
+(def ^CompiledScript CS4 (t/is (compiled-script? (TRACE SEC compile "(+ x y)"))))
+(def ^CompiledScript CS5 (t/is (compiled-script? (TRACE SEC compile "(let [r (+ x y)] (println r) [*ns* r])"))))
+
+(t/is (thrown-with-msg? ScriptException #"EOF while reading" (TRACE SEC compile "(+ 2 2")))
 
 ;; TEST eval of compiled, good or bad, with bindings and context
-
-
-
-
-
-
 
 ;; (TRACE CS eval SEB)
 ;; (TRACE CS eval SEB)
@@ -140,6 +140,8 @@
 ;; TEST invokeFunction, good or bad
 ;; TEST getInterface and invoke method, good or bad
 
+(t/is (ifn? (TRACE SE eval "(defn Callable#call [] (println :callable) :callable)")))
+(t/is (var? (TRACE SE eval "(def z nil)")))
 
 (TRACE SE eval "(defn Callable#call [] (println :callable) :callable)")
 
@@ -446,3 +448,29 @@
 (fn [] (fn [] x))
 
 x
+
+
+
+;; (defmacro PRINT [o m & p]
+;;   `(let [r# (try (. ~o ~m ~@p) (catch Exception e# e#))]
+;;      (println (str '~o "." '~m '~p ":" (if (nil? r#) " nil" (format "(%s): %s" (type r#) r#))
+;;                    (if (instance? Exception r#) (format ", caused by: %s" (.getCause ^Exception r#))))) r#))
+
+
+;; (println "TEST_VERBOSE" TEST_VERBOSE)
+
+
+;; (def CLOJURE-VERSION-STR (clojure-version))
+;; (def CLOJURE-VERSION-STR (apply str (interpose "." ((juxt :major :minor :incremental) *clojure-version*))))
+;; (def CLOJURE-VERSION-STR (clojure.string/join "." ((juxt :major :minor :incremental) *clojure-version*))) 
+
+
+
+;; (def DEFAULT_NS (.eval SE "*ns*"))
+
+;; (println (.getEngineFactories SEM))
+
+;; (load-string (.getOutputStatement SEF0 nil))
+;; (load-string (.getOutputStatement SEF0 "123"))
+;; (load-string (.getOutputStatement SEF0 "'abc:\"ced\"'"))
+
