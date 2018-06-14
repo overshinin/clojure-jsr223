@@ -247,6 +247,18 @@
   (time (dotimes [i 1000000]
           (.invokeFunction SEI "+" args))))
 
+
+;; (let [args (into-array Object [2 2])]
+;;   (time (dotimes [i 100000]
+;;           (.invokeFunction SEI "+" args))))
+
+(println "-- 2-19 args")
+(doseq [i (range 2 20)]
+  (let [args (into-array Object (range i))]
+    (time (dotimes [i 100000]
+            (.invokeFunction SEI "+" args)))))
+(println "--")
+
 (let [b (doto ^Bindings (.createBindings SE) (.put "x" 2) (.put "y" 2))]
   (time (dotimes [i 1000000]
           (.eval CS4 b))))
