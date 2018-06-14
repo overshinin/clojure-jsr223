@@ -107,6 +107,11 @@
 
 (t/is (= 4 (TRACE CS2 eval)))
 
+(t/is (= (let [baos (ByteArrayOutputStream.)]
+           (TRACE CS3 eval (doto (SimpleScriptContext.) (.setWriter (OutputStreamWriter. baos))))
+           (clojure.string/trim (.toString baos))) "4"))
+
+
 ;; (TRACE CS4 eval)
 
 ;; (time (.eval SE "(+ 2 2)"))
@@ -138,6 +143,20 @@
 
 
 ;; TEST invokeFunction, good or bad
+(t/is (= (TRACE SEI invokeFunction "four" (into-array Object [2 2])) 4))
+(t/is (= (TRACE SEI invokeFunction "+" (into-array Object [2 2])) 4))
+(t/is (= (TRACE SEI invokeFunction "clojure.core/+" (into-array Object [2 2])) 4))
+
+(t/is (thrown? NoSuchMethodException (TRACE SEI invokeFunction "clojure.cor/+" (into-array Object [2 2]))))
+(t/is (thrown? NoSuchMethodException (TRACE SEI invokeFunction "clojure.core/++" (into-array Object [2 2]))))
+(t/is (thrown? NoSuchMethodException (TRACE SEI invokeFunction "*ns*" (into-array Object [2 2]))))
+(t/is (thrown? ScriptException (TRACE SEI invokeFunction "x" (into-array Object [2 2])))) ;; x unbound
+(t/is (thrown? NoSuchMethodException (TRACE SEI invokeFunction "" (into-array Object [2 2]))))
+(t/is (thrown? NullPointerException (TRACE SEI invokeFunction nil (into-array Object [2 2])))) ;; null
+(t/is (thrown? ScriptException (TRACE SEI invokeFunction "nil?" (into-array Object [2 2])))) ;; ArityException
+
+(t/is (= (TRACE SEI invokeFunction "reflect" (into-array Object [2 2])) 4))
+
 ;; TEST getInterface and invoke method, good or bad
 
 (t/is (ifn? (TRACE SE eval "(defn Callable#call [] (println :callable) :callable)")))
