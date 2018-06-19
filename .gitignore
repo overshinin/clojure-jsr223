@@ -4,5 +4,4 @@
 *.zip
 *.pdf
 build/
-dist/
 lib/*.jar*
