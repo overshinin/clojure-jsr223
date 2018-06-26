@@ -24,13 +24,13 @@ By default, each new `ScriptEngine` is created in new Clojure Namespace, templat
 If "template" does not contain "format specifier" (like `%d`), all `ScriptEngine`s share single Clojure Namespace.
 For example, passing `-Dclojure.scripting.NS_TEMPLATE=user` to JVM enforces all ScriptEngines to use default Namespace (`user`).
 
-Clojure Namespace can also be created per `ScriptContext`, if `-Dclojure.scripting.NS_PER_CONTEXT=true` is passed to JVM.
+Clojure Namespace can also be created per `ScriptContext`, if `-Dclojure.scripting.NS_PER_CONTEXT=true` is provided to JVM.
 In this case, Namespace name is stored in `ScriptContext(ENGINE_SCOPE)'s Bindings` under `javax.script.Namespace` key.
 
 ##### `javax.script.Compilable`
 
-"Compilation" is implemented via creating and evaluating new function, which contains passed script. 
-All symbols, used in script, must be bound (via Bindings, or Clojure root variables) at the moment of `CompiledScript.eval ()`.
+"Compilation" is implemented via creating new function, which contains body of the script. 
+All symbols, used in script, must be bound (via Bindings, or Clojure root variables) at the moment of `CompiledScript.eval ()`, which executes this new function.
 
 ##### `javax.script.Invocable`
 
