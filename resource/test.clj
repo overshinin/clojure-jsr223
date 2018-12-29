@@ -74,9 +74,12 @@
 (t/is (= (TRACE SE eval "(four :a :b)") 4))
 (t/is (= (TRACE SE eval "(reflect 2 2)") 4))
 
-(t/is (thrown-with-msg? ScriptException #"Unable to resolve symbol" (TRACE SE eval "(defn bad [] \n (+ \n 2 \n 2 \n x))")))
-(t/is (thrown-with-msg? ScriptException #"Divide by zero" (.eval SE "(/ 1 0)")))
-(t/is (thrown-with-msg? ScriptException #"EOF while reading" (.eval SE "(defn bad-not-read [] ((((")))
+;; (t/is (thrown-with-msg? ScriptException #"Unable to resolve symbol" (TRACE SE eval "(defn bad [] \n (+ \n 2 \n 2 \n x))")))
+(t/is (thrown-with-msg? ScriptException #"Syntax error compiling at" (TRACE SE eval "(defn bad [] \n (+ \n 2 \n 2 \n x))")))
+;;(t/is (thrown-with-msg? ScriptException #"Divide by zero" (.eval SE "(/ 1 0)")))
+(t/is (thrown-with-msg? ScriptException #"Syntax error compiling at" (.eval SE "(/ 1 0)")))
+;;(t/is (thrown-with-msg? ScriptException #"EOF while reading" (.eval SE "(defn bad-not-read [] ((((")))
+(t/is (thrown-with-msg? ScriptException #"Syntax error reading source at" (.eval SE "(defn bad-not-read [] ((((")))
 
 (t/is (= (let [baos (ByteArrayOutputStream.)]
            (TRACE SE eval "(println (+ 2 2))" (doto (SimpleScriptContext.) (.setWriter (OutputStreamWriter. baos))))

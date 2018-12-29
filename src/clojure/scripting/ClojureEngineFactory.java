@@ -357,7 +357,7 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
 
         @Override
         public CompiledScript compile (final Reader r) throws ScriptException {
-            return new ClojureCompiledScript (ClojureConcatReader.wrap ("(fn [] ", r, ")"));
+            return new ClojureCompiledScript (r);
         }
 
         @Override
@@ -376,14 +376,32 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
             private Map<Namespace, IFn> compiledByNS;
 
             ClojureCompiledScript (final Reader r) throws ScriptException {
+                if (r == null)
+                    throw new NullPointerException ("reader is null");
+
                 final ScriptContext c = ClojureEngine.this.context;
                 final Namespace ns = NS_PER_CONTEXT ? getContextNS (c) : ClojureEngine.this.namespace;
 
                 callClojure (new Callable () {
                         @Override
                         public Object call () {
-                            // parsed = LispReader.read (new LineNumberingPushbackReader (r), null); // from Clojure 1.7.0
-                            parsed = LispReader.read (new LineNumberingPushbackReader (r), true, null, false); // Clojure 1.5.1
+                            // parsed = LispReader.read (new LineNumberingPushbackReader (new Reader () ... r ...), null); // from Clojure 1.7.0
+                            parsed = LispReader.read (new LineNumberingPushbackReader (new Reader () {
+                                    private Reader[] readers = {new StringReader ("(fn [] "), r, new StringReader (")")};
+                                    private int pos = 0;
+                                    @Override
+                                    public int read (final char[] cbuf, final int off, final int len) throws IOException {
+                                        for (int res = -1; pos < readers.length; pos++)
+                                            if ((res = readers[pos].read (cbuf, off, len)) != -1)
+                                                return res;
+                                        return -1;
+                                    }
+
+                                    @Override
+                                    public void close () throws IOException {
+                                        for (Reader r : readers)
+                                            r.close ();
+                                    }}), true, null, false); // from Clojure 1.5.1
 
                             if (NS_PER_CONTEXT)
                                 compiledByNS = new ConcurrentHashMap<Namespace, IFn> ();
@@ -655,37 +673,6 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
                 c.setAttribute (NS_KEY, createNamespace (), ENGINE_SCOPE);
 
             return callClojureZ (cc, c);
-        }
-    }
-
-    private static final class ClojureConcatReader extends Reader {
-
-        private final Reader[] readers;
-        private int pos = 0;
-
-        private ClojureConcatReader (final Reader... rs) {
-            readers = rs;
-        }
-
-        @Override
-        public int read (final char[] cbuf, final int off, final int len) throws IOException {
-            for (int res = -1; pos < readers.length; pos++)
-                if ((res = readers[pos].read (cbuf, off, len)) != -1)
-                    return res;
-            return -1;
-        }
-
-        @Override
-        public void close () throws IOException {
-            for (Reader r : readers)
-                r.close ();
-        }
-
-        static Reader wrap (final String before, final Reader r, final String after) {
-            if (r == null)
-                throw new NullPointerException ("reader is null");
-
-            return new ClojureConcatReader (new StringReader (before), r, new StringReader (after));
         }
     }
 }

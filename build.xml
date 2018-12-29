@@ -6,16 +6,23 @@
   <property name="resource" location="resource"/>
   <property name="build" location="build"/>
   <property name="dist" location="dist"/>
-  <property name="clojure_jar" location="${lib}/clojure-1.9.0.jar"/>
+  <!-- <property name="clojure_jar" location="${lib}/clojure-1.9.0.jar"/> -->
+  <property name="clojure_jar" location="${lib}/clojure-1.10.0.jar"/>
   <property name="clojure151_jar" location="${lib}/clojure-1.5.1.jar"/>
   <property name="jsr223-ri-api_jar" location="${lib}/script-api.jar"/>
 
   <property name="clojure_jsr223_jar" location="${dist}/clojure-jsr223.jar"/>
 
+  <!-- <path id="clojure.class.path"> -->
+  <!--   <pathelement location="${lib}/clojure-1.9.0.jar"/> -->
+  <!--   <pathelement location="${lib}/spec.alpha-0.1.143.jar"/> -->
+  <!--   <pathelement location="${lib}/core.specs.alpha-0.1.24.jar"/> -->
+  <!-- </path> -->
+
   <path id="clojure.class.path">
-    <pathelement location="${lib}/clojure-1.9.0.jar"/>
-    <pathelement location="${lib}/spec.alpha-0.1.143.jar"/>
-    <pathelement location="${lib}/core.specs.alpha-0.1.24.jar"/>
+    <pathelement location="${lib}/clojure-1.10.0.jar"/>
+    <pathelement location="${lib}/core.specs.alpha-0.2.44.jar"/>
+    <pathelement location="${lib}/spec.alpha-0.2.176.jar"/>
   </path>
 
   <target name="init">
