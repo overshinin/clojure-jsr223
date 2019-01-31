@@ -606,7 +606,7 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
         }
 
         private Object callClojureFN (final IFn fn, final Object thiz, final Object[] args) throws ScriptException {
-            if (args == null)
+            if (args == null || args.length == 0)
                 return callClojureFN (fn, new Object[] {thiz});
             Object[] xargs = new Object[args.length + 1];
             xargs[0] = thiz;
