@@ -521,7 +521,7 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
 
         @Override
         public Object invokeFunction (final String name, final Object... args) throws ScriptException, NoSuchMethodException {
-            return callClojureF0 (getClojureFN (name), args);
+            return callClojureFN (getClojureFN (name), args);
         }
 
         @Override
@@ -529,7 +529,7 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
             if (thiz == null /*|| TODO: specified Object does not represent a scripting object */)
                 throw new IllegalArgumentException ("Object is null or does not represent a scripting object");
 
-            return callClojureF1 (getClojureFN (name), thiz, args);
+            return callClojureFN (getClojureFN (name), thiz, args);
         }
 
         /*
@@ -587,7 +587,7 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
             return getClojureFN (name, NS_PER_CONTEXT ? getContextNS (context) : namespace);
         }
 
-        private Object callClojureF0 (final IFn fn, final Object... args) throws ScriptException {
+        private Object callClojureFN (final IFn fn, final Object[] args) throws ScriptException {
             return callClojureZ (new Callable () {
                     @Override
                     public Object call () {
@@ -605,23 +605,32 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
                     }}, context);
         }
 
-        private Object callClojureF1 (final IFn fn, final Object thiz, final Object... args) throws ScriptException {
-            return callClojureZ (new Callable () {
-                    @Override
-                    public Object call () {
-                        switch (args == null ? 0 : args.length) {
-                        case 0: return fn.invoke (thiz);
-                        case 1: return fn.invoke (thiz, args[0]);
-                        case 2: return fn.invoke (thiz, args[0], args[1]);
-                        case 3: return fn.invoke (thiz, args[0], args[1], args[2]);
-                        case 4: return fn.invoke (thiz, args[0], args[1], args[2], args[3]);
-                        case 5: return fn.invoke (thiz, args[0], args[1], args[2], args[3], args[4]);
-                        case 6: return fn.invoke (thiz, args[0], args[1], args[2], args[3], args[4], args[5]);
-                        case 7: return fn.invoke (thiz, args[0], args[1], args[2], args[3], args[4], args[5], args[6]);
-                        default: return fn.applyTo (RT.cons (thiz, args));
-                        }
-                    }}, context);
+        private Object callClojureFN (final IFn fn, final Object thiz, final Object[] args) throws ScriptException {
+            if (args == null)
+                return callClojureFN (fn, new Object[] {thiz});
+            Object[] xargs = new Object[args.length + 1];
+            xargs[0] = thiz;
+            System.arraycopy (args, 0, xargs, 1, args.length);
+            return callClojureFN (fn, xargs);
         }
+
+        // private Object callClojureFN (final IFn fn, final Object thiz, final Object[] args) throws ScriptException {
+        //     return callClojureZ (new Callable () {
+        //             @Override
+        //             public Object call () {
+        //                 switch (args == null ? 0 : args.length) {
+        //                 case 0: return fn.invoke (thiz);
+        //                 case 1: return fn.invoke (thiz, args[0]);
+        //                 case 2: return fn.invoke (thiz, args[0], args[1]);
+        //                 case 3: return fn.invoke (thiz, args[0], args[1], args[2]);
+        //                 case 4: return fn.invoke (thiz, args[0], args[1], args[2], args[3]);
+        //                 case 5: return fn.invoke (thiz, args[0], args[1], args[2], args[3], args[4]);
+        //                 case 6: return fn.invoke (thiz, args[0], args[1], args[2], args[3], args[4], args[5]);
+        //                 case 7: return fn.invoke (thiz, args[0], args[1], args[2], args[3], args[4], args[5], args[6]);
+        //                 default: return fn.applyTo (RT.cons (thiz, args));
+        //                 }
+        //             }}, context);
+        // }
 
         @SuppressWarnings ("unchecked")
         private <T> T getClojureIF (final Object thiz, final Class<T> clasz) {
@@ -643,7 +652,7 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
                         String name = method.getName ();
                         IFn fn = fns.get (name);
                         if (fn != null)
-                            return thiz == null ? callClojureF0 (fn, args) : callClojureF1 (fn, thiz, args);
+                            return thiz == null ? callClojureFN (fn, args) : callClojureFN (fn, thiz, args);
                         if ("toString".equals (name))
                             return "Proxy implementation of ClojureEngine/" + clasz.toString ();
                         if ("hashCode".equals (name))
