@@ -8,14 +8,24 @@
 
 (def TEST_VERBOSE (Boolean/getBoolean "test.verbose"))
 
+;; (defmacro TRACE [o m & p]
+;;   (if TEST_VERBOSE
+;;     `(let [[a# b#] (try [(. ~o ~m ~@p) nil] (catch Exception e# [nil e#])) r# (or b# a#)]
+;;        (println (str '~o "." '~m '~p ":"
+;;                      (if (nil? r#) " nil" (format "(%s): %s" (type r#) r#))
+;;                      (if b# (format ", caused by: %s" (.getCause ^Exception b#)))))
+;;        (if b# (throw b#) a#))
+;;     `(. ~o ~m ~@p)))
+
 (defmacro TRACE [o m & p]
   (if TEST_VERBOSE
-    `(let [[a# b#] (try [(. ~o ~m ~@p) nil] (catch Exception e# [nil e#])) r# (or a# b#)]
+    `(let [[a# b#] (try [(. ~o ~m ~@p) nil] (catch Exception e# [nil e#]))]
        (println (str '~o "." '~m '~p ":"
-                     (if r# (format "(%s): %s" (type r#) r#) " nil")
-                     (if b# (format ", caused by: %s" (.getCause ^Exception b#)))))
+                     (if b# (format "thrown (%s): %s, caused by: %s" (type b#) b# (.getCause ^Exception b#))
+                         (if (nil? a#) " nil" (format "(%s): %s" (type a#) a#)))))
        (if b# (throw b#) a#))
     `(. ~o ~m ~@p)))
+
 
 (def NS_TEMPLATE (System/getProperty "clojure.scripting.NS_TEMPLATE" "clojure.scripting.ns-%d"))
 (def NS_IS_CONSTANT (= NS_TEMPLATE (format NS_TEMPLATE 1)))
@@ -160,7 +170,7 @@
 
 (t/is (= (TRACE SEI invokeFunction "reflect" (into-array Object [2 2])) 4))
 
-;; TEST getInterface and invoke method, good or bad
+;; TEST getInterface (Class) and invoke method, good or bad
 
 (t/is (ifn? (TRACE SE eval "(defn Callable#call [] (println :callable) :callable)")))
 (t/is (var? (TRACE SE eval "(def z nil)")))
@@ -174,10 +184,32 @@
 (TRACE cxx toString)
 (println cxx)
 
+;; TODO: TEST getInterface (Object, Class) and invoke method, good or bad
+
+(TRACE SE eval "(defn Comparable#compareTo [this o] (println this o) (.compareTo this o))")
+
+(def cmp42 42M)
+(def cmp73 73M)
+
+(def ^Comparable cmp (TRACE SEI getInterface cmp42 Comparable))
+
+(TRACE cmp compareTo 42M)
+(TRACE cmp compareTo cmp42)
+(TRACE cmp compareTo cmp73)
+
+(TRACE cmp equals 42M)
+(TRACE cmp equals cmp42)
+(TRACE cmp equals cmp73)
+
+(TRACE cmp equals SEI)
+(TRACE cmp hashCode)
+(TRACE cmp toString)
+
+
+(println cmp)
+
+
 ;; TEST namespaces
-
-
-
 
 ;; -------------------------------------------------- Namespaces
 ;; (if NS_IS_CONSTANT
