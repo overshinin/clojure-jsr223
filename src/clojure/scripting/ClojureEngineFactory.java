@@ -260,7 +260,10 @@ public final class ClojureEngineFactory implements ScriptEngineFactory {
 
         @Override
         public Bindings createBindings () {
-            return new SimpleBindings (new ConcurrentHashMap<String, Object> ());
+            // return new SimpleBindings (new ConcurrentHashMap<String, Object> ());
+            // javadoc:ConcurrentHashMap Like Hashtable but unlike HashMap, this class does not allow null to be used as a key or value.
+            // JMeter puts nulls as value
+            return new SimpleBindings (new HashMap<String, Object> ());
         }
 
         @Override
